@@ -29,7 +29,7 @@ The gamepad USB device is moved to the Linux subsystem using USBIPD-WIN. Windows
 
 Clone the repository:
 ```
-git clone https://github.com/sst/bouton
+git clone https://github.com/cyypherus/bouton
 cd bouton
 ```
 
