@@ -1,10 +1,10 @@
 use bouton_core::GamepadEvent;
 use ratatui::{
+    Frame,
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span},
     widgets::{Block, Borders, Paragraph},
-    Frame,
 };
 use std::collections::HashMap;
 use std::collections::VecDeque;
@@ -47,12 +47,18 @@ impl GamepadState {
                 self.buttons.insert(*code, *pressed);
                 let button_name = button_name(*code);
                 let status = if *pressed { "PRESSED" } else { "RELEASED" };
-                self.add_log(format!("Button {}: {} (code: 0x{:X})", button_name, status, code));
+                self.add_log(format!(
+                    "Button {}: {} (code: 0x{:X})",
+                    button_name, status, code
+                ));
             }
             GamepadEvent::Axis { code, value } => {
                 self.axes.insert(*code, *value);
                 let axis_name = axis_name(*code);
-                self.add_log(format!("Axis {}: {} (code: 0x{:X})", axis_name, value, code));
+                self.add_log(format!(
+                    "Axis {}: {} (code: 0x{:X})",
+                    axis_name, value, code
+                ));
             }
         }
     }
@@ -101,29 +107,24 @@ fn draw_status(f: &mut Frame, state: &GamepadState, area: Rect) {
         format!("{} Gamepad", gamepad_status.0)
     };
 
-    let status_text = vec![
-        Line::from(vec![
-            Span::styled(
-                gamepad_text,
-                Style::default().fg(gamepad_status.1),
-            ),
-            Span::raw(" "),
-            Span::styled(
-                format!("{} Server", server_status.0),
-                Style::default().fg(server_status.1),
-            ),
-            Span::raw(if state.deadzone > 0 {
-                format!("  (deadzone: {})", state.deadzone)
-            } else {
-                String::new()
-            }),
-            Span::raw("  "),
-            Span::styled(
-                "Press Q or Esc to exit",
-                Style::default().fg(Color::DarkGray),
-            ),
-        ]),
-    ];
+    let status_text = vec![Line::from(vec![
+        Span::styled(gamepad_text, Style::default().fg(gamepad_status.1)),
+        Span::raw(" "),
+        Span::styled(
+            format!("{} Server", server_status.0),
+            Style::default().fg(server_status.1),
+        ),
+        Span::raw(if state.deadzone > 0 {
+            format!("  (deadzone: {})", state.deadzone)
+        } else {
+            String::new()
+        }),
+        Span::raw("  "),
+        Span::styled(
+            "Press Q or Esc to exit",
+            Style::default().fg(Color::DarkGray),
+        ),
+    ])];
 
     let block = Block::default().borders(Borders::BOTTOM);
     let paragraph = Paragraph::new(status_text).block(block);
@@ -141,15 +142,26 @@ fn draw_buttons_and_axes(f: &mut Frame, state: &GamepadState, area: Rect) {
 }
 
 fn draw_buttons(f: &mut Frame, state: &GamepadState, area: Rect) {
-    let button_codes = vec![0x130, 0x131, 0x132, 0x133, 0x134, 0x135, 0x138, 0x139, 0x13A, 0x13B, 0x13D, 0x13C, 0x13E];
-    let button_names = vec!["□ Square", "✕ Cross", "○ Circle", "△ Triangle", "L1", "R1", "Select", "Start", "L3", "R3", "Touch", "Aux1", "Aux2"];
+    let button_codes = vec![
+        0x130, 0x131, 0x132, 0x133, 0x134, 0x135, 0x138, 0x139, 0x13A, 0x13B, 0x13D, 0x13C, 0x13E,
+    ];
+    let button_names = vec![
+        "□ Square",
+        "✕ Cross",
+        "○ Circle",
+        "△ Triangle",
+        "L1",
+        "R1",
+        "Select",
+        "Start",
+        "L3",
+        "R3",
+        "Touch",
+        "Aux1",
+        "Aux2",
+    ];
 
-    let mut text = vec![Line::from(Span::styled(
-        "BUTTONS",
-        Style::default()
-            .fg(Color::White)
-            .add_modifier(Modifier::BOLD),
-    ))];
+    let mut text = vec![];
 
     for (code, name) in button_codes.iter().zip(button_names.iter()) {
         let pressed = state.buttons.get(code).copied().unwrap_or(false);
@@ -159,7 +171,12 @@ fn draw_buttons(f: &mut Frame, state: &GamepadState, area: Rect) {
             Style::default().fg(Color::Gray)
         };
         text.push(Line::from(Span::styled(
-            format!("  {} (0x{:X}): {}", name, code, if pressed { "●" } else { "○" }),
+            format!(
+                "  {} (0x{:X}): {}",
+                name,
+                code,
+                if pressed { "●" } else { "○" }
+            ),
             style,
         )));
     }
@@ -174,14 +191,14 @@ fn draw_buttons(f: &mut Frame, state: &GamepadState, area: Rect) {
 fn draw_axes(f: &mut Frame, state: &GamepadState, area: Rect) {
     let axis_codes = vec![0x00, 0x01, 0x02, 0x05, 0x03, 0x04, 0x10, 0x11];
     let axis_names = vec![
-        "Left Stick X", 
-        "Left Stick Y", 
+        "Left Stick X",
+        "Left Stick Y",
         "Right Stick X",
         "Right Stick Y",
         "L2",
         "R2",
-        "D-Pad X", 
-        "D-Pad Y"
+        "D-Pad X",
+        "D-Pad Y",
     ];
 
     let mut text = vec![];
@@ -194,9 +211,7 @@ fn draw_axes(f: &mut Frame, state: &GamepadState, area: Rect) {
         )));
     }
 
-    let block = Block::default()
-        .title("Axes")
-        .borders(Borders::ALL);
+    let block = Block::default().title("Axes").borders(Borders::ALL);
     let paragraph = Paragraph::new(text).block(block);
     f.render_widget(paragraph, area);
 }
@@ -208,9 +223,7 @@ fn draw_log(f: &mut Frame, state: &GamepadState, area: Rect) {
         .map(|msg| Line::from(Span::raw(msg.clone())))
         .collect();
 
-    let block = Block::default()
-        .title("Event Log")
-        .borders(Borders::ALL);
+    let block = Block::default().title("Event Log").borders(Borders::ALL);
     let paragraph = Paragraph::new(log_lines).block(block);
     f.render_widget(paragraph, area);
 }

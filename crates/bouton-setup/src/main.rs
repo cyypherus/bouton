@@ -2,8 +2,6 @@ use std::io::{self, Write};
 use std::process::Command;
 use std::thread;
 use std::time::Duration;
-use std::env;
-use std::path::PathBuf;
 
 fn main() {
     println!("=== Bouton Setup ===\n");
@@ -14,33 +12,29 @@ fn main() {
     // Step 2: Get WSL IP
     let wsl_ip = get_wsl_ip();
 
-    // Step 3: Get deadzone
-    let deadzone = get_deadzone();
-
-    // Step 4: Get config file path
+    // Step 3: Get config file path
     let config_path = get_config_path();
 
     println!("\n=== Configuration ===");
     println!("USB Device: {}", busid);
     println!("WSL IP: {}", wsl_ip);
-    println!("Deadzone: {}", deadzone);
     println!("Config File: {}", config_path);
 
-    // Step 5: Attach USB device
+    // Step 4: Attach USB device
     println!("\n=== Attaching USB Device ===");
     attach_usb_device(&busid);
 
-    // Step 6: Get Linux event device
+    // Step 5: Get Linux event device
     println!("\n=== Finding Linux Event Device ===");
     let event_device = get_linux_event_device();
 
-    // Step 7: Launch Windows server
+    // Step 6: Launch Windows server
     println!("\n=== Launching Bouton Server ===");
     launch_windows_server(&config_path);
 
-    // Step 8: Launch Linux client
+    // Step 7: Launch Linux client
     println!("\n=== Launching Bouton Client ===");
-    launch_linux_client(&event_device, &wsl_ip, deadzone);
+    launch_linux_client(&event_device, &wsl_ip);
 }
 
 fn select_usbipd_device() -> String {
@@ -105,16 +99,6 @@ fn get_wsl_ip() -> String {
     let mut input = String::new();
     io::stdin().read_line(&mut input).unwrap();
     input.trim().to_string()
-}
-
-fn get_deadzone() -> i32 {
-    println!("\nStep 3: Joystick Deadzone");
-    print!("Enter deadzone value (0-100, default 0): ");
-    io::stdout().flush().unwrap();
-
-    let mut input = String::new();
-    io::stdin().read_line(&mut input).unwrap();
-    input.trim().parse().unwrap_or(0)
 }
 
 fn get_config_path() -> String {
@@ -255,22 +239,34 @@ fn launch_windows_server(config_path: &str) {
     }
 }
 
-fn launch_linux_client(event_device: &str, wsl_ip: &str, deadzone: i32) {
+fn launch_linux_client(event_device: &str, wsl_ip: &str) {
     println!("Launching Linux client via WSL...\n");
     println!("Device: {}", event_device);
-    println!("Server: {}:8000", wsl_ip);
-    println!("Deadzone: {}\n", deadzone);
+    println!("Server: {}:8000\n", wsl_ip);
 
-    let mut args = vec![
+    // Find bouton-linux using which
+    let which_output = Command::new("wsl")
+        .args(&["which", "bouton-linux"])
+        .output();
+
+    let client_path = if let Ok(result) = which_output {
+        if result.status.success() {
+            String::from_utf8_lossy(&result.stdout).trim().to_string()
+        } else {
+            eprintln!("✗ Could not find bouton-linux in PATH");
+            return;
+        }
+    } else {
+        eprintln!("✗ Error running which");
+        return;
+    };
+
+    let args = vec![
         "sudo".to_string(),
-        "bouton-linux".to_string(),
+        client_path,
         event_device.to_string(),
         format!("{}:8000", wsl_ip),
     ];
-
-    if deadzone > 0 {
-        args.push(deadzone.to_string());
-    }
 
     let output = Command::new("wsl").args(&args).status();
 

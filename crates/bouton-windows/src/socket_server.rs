@@ -9,7 +9,7 @@ use tokio::net::{TcpListener, TcpStream};
 pub struct SocketServer {
     listener: TcpListener,
     button_map: Arc<HashMap<u16, u32>>,
-    joystick_map: Arc<HashMap<u16, JoystickCodeConfig>>,
+    joystick_map: Arc<HashMap<GamepadControl, JoystickCodeConfig>>,
     trigger_map: Arc<HashMap<u16, TriggerCodeConfig>>,
     dpad_config: Arc<Option<DPadCodeConfig>>,
 }
@@ -18,7 +18,7 @@ impl SocketServer {
     pub async fn bind(
         addr: SocketAddr,
         button_map: HashMap<u16, u32>,
-        joystick_map: HashMap<u16, JoystickCodeConfig>,
+        joystick_map: HashMap<GamepadControl, JoystickCodeConfig>,
         trigger_map: HashMap<u16, TriggerCodeConfig>,
         dpad_config: Option<DPadCodeConfig>,
     ) -> std::io::Result<Self> {
@@ -54,7 +54,7 @@ impl SocketServer {
 async fn handle_connection(
     mut socket: TcpStream,
     button_map: Arc<HashMap<u16, u32>>,
-    joystick_map: Arc<HashMap<u16, JoystickCodeConfig>>,
+    joystick_map: Arc<HashMap<GamepadControl, JoystickCodeConfig>>,
     trigger_map: Arc<HashMap<u16, TriggerCodeConfig>>,
     dpad_config: Arc<Option<DPadCodeConfig>>,
 ) -> std::io::Result<()> {
@@ -64,44 +64,39 @@ async fn handle_connection(
     
     // Track axis states for threshold crossings
     let mut joystick_states: HashMap<GamepadControl, (u8, u8)> = HashMap::new(); // (x, y) values
+    let mut joystick_pressed: HashMap<GamepadControl, (Option<u32>, Option<u32>)> = HashMap::new(); // (x_key, y_key) currently pressed
     let mut trigger_states: HashMap<GamepadControl, bool> = HashMap::new(); // is_pressed
     let mut dpad_state: Option<(u8, u8)> = None; // (x, y) values
+    let mut dpad_pressed: Option<u32> = None; // currently pressed dpad key code
 
     while let Some(line) = lines.next_line().await? {
         match serde_json::from_str::<InputEvent>(&line) {
             Ok(event) => {
                 match event {
                     InputEvent::Button(button_event) => {
-                        if let Some(control) = GamepadControl::from_code(button_event.button_code) {
-                            println!("Button event received: {:?}, action={:?}", control, button_event.action);
-                        } else {
-                            println!("Button event received: code=0x{:X}, action={:?}", button_event.button_code, button_event.action);
-                        }
-                        
                         if let Some(&key_code) = button_map.get(&button_event.button_code) {
                             let key_name = code_to_name(key_code);
-                            println!("  → Button mapped to key: {}", key_name);
                             
                             if let Err(e) = KeyInjector::inject(key_code, button_event.action) {
-                                eprintln!("  ✗ Failed to inject key: {}", e);
+                                eprintln!("✗ Failed to inject key: {}", e);
                             } else {
-                                println!("  ✓ {} {}", key_name, if button_event.action == KeyAction::Press { "pressed" } else { "released" });
+                                println!("✓ {} {}", key_name, if button_event.action == KeyAction::Press { "pressed" } else { "released" });
                             }
-                        } else {
-                            println!("  → Button not mapped in config");
                         }
                     }
                     InputEvent::Axis(axis_event) => {
                         let control = GamepadControl::from_code(axis_event.axis_code);
                         
                         if let Some(control) = control {
-                            println!("Axis event received: {:?}, value={}", control, axis_event.value);
-                            
                             match control {
-                                GamepadControl::LeftStickX | GamepadControl::LeftStickY
-                                | GamepadControl::RightStickX | GamepadControl::RightStickY => {
-                                    if let Some(joystick_config) = joystick_map.get(&axis_event.axis_code) {
-                                        handle_joystick_axis(control, axis_event.value, joystick_config, &mut joystick_states).await;
+                                GamepadControl::LeftStickX | GamepadControl::LeftStickY => {
+                                    if let Some(joystick_config) = joystick_map.get(&GamepadControl::LeftStickX) {
+                                        handle_joystick_axis(control, axis_event.value, joystick_config, &mut joystick_states, &mut joystick_pressed).await;
+                                    }
+                                }
+                                GamepadControl::RightStickX | GamepadControl::RightStickY => {
+                                    if let Some(joystick_config) = joystick_map.get(&GamepadControl::RightStickX) {
+                                        handle_joystick_axis(control, axis_event.value, joystick_config, &mut joystick_states, &mut joystick_pressed).await;
                                     }
                                 }
                                 GamepadControl::L2 | GamepadControl::R2 => {
@@ -111,14 +106,11 @@ async fn handle_connection(
                                 }
                                 GamepadControl::DPadX | GamepadControl::DPadY => {
                                     if let Some(dpad) = dpad_config.as_ref() {
-                                        handle_dpad_axis(control, axis_event.value, dpad, &mut dpad_state).await;
+                                        handle_dpad_axis(control, axis_event.value, dpad, &mut dpad_state, &mut dpad_pressed).await;
                                     }
                                 }
                                 _ => {}
                             }
-                        } else {
-                            println!("Axis event received: code=0x{:X}, value={}", axis_event.axis_code, axis_event.value);
-                            println!("  → Unknown axis code");
                         }
                     }
                 }
@@ -137,18 +129,19 @@ async fn handle_joystick_axis(
     value: u8,
     config: &JoystickCodeConfig,
     states: &mut HashMap<GamepadControl, (u8, u8)>,
+    pressed: &mut HashMap<GamepadControl, (Option<u32>, Option<u32>)>,
 ) {
-    // Determine the paired axis
-    let (paired_control, is_x_axis) = match control {
-        GamepadControl::LeftStickX => (GamepadControl::LeftStickY, true),
-        GamepadControl::LeftStickY => (GamepadControl::LeftStickX, false),
-        GamepadControl::RightStickX => (GamepadControl::RightStickY, true),
-        GamepadControl::RightStickY => (GamepadControl::RightStickX, false),
+    // Determine the paired axis and use the X axis control as the key
+    let (is_x_axis, stick_key) = match control {
+        GamepadControl::LeftStickX => (true, GamepadControl::LeftStickX),
+        GamepadControl::LeftStickY => (false, GamepadControl::LeftStickX),
+        GamepadControl::RightStickX => (true, GamepadControl::RightStickX),
+        GamepadControl::RightStickY => (false, GamepadControl::RightStickX),
         _ => return,
     };
     
     // Get current state, defaulting to center (127, 127)
-    let (mut x, mut y) = states.get(&control).copied().unwrap_or((127, 127));
+    let (mut x, mut y) = states.get(&stick_key).copied().unwrap_or((127, 127));
     
     if is_x_axis {
         x = value;
@@ -156,43 +149,76 @@ async fn handle_joystick_axis(
         y = value;
     }
     
-    states.insert(control, (x, y));
+    states.insert(stick_key, (x, y));
     
     // Check if we're in deadzone
     let center = 127i16;
     let x_diff = (x as i16 - center).abs();
     let y_diff = (y as i16 - center).abs();
-    let in_deadzone = x_diff < config.deadzone as i16 && y_diff < config.deadzone as i16;
+    let x_in_deadzone = x_diff < config.deadzone as i16;
+    let y_in_deadzone = y_diff < config.deadzone as i16;
     
-    if in_deadzone {
-        return; // Ignore inputs in deadzone
-    }
+    let (mut x_key_pressed, mut y_key_pressed) = pressed.get(&stick_key).copied().unwrap_or((None, None));
     
-    // Determine which direction to send
-    let (key_code, direction) = if x_diff > y_diff {
-        // More horizontal movement
-        if x > 127 {
-            (config.right, "right")
-        } else {
-            (config.left, "left")
-        }
+    // Handle X axis
+    let new_x_key = if x_in_deadzone {
+        None
+    } else if x > 127 {
+        Some(config.right)
     } else {
-        // More vertical movement
-        if y > 127 {
-            (config.down, "down")
-        } else {
-            (config.up, "up")
-        }
+        Some(config.left)
     };
     
-    let key_name = code_to_name(key_code);
-    println!("  → Joystick {:?} moved {}, key: {}", control, direction, key_name);
-    
-    if let Err(e) = KeyInjector::inject(key_code, KeyAction::Press) {
-        eprintln!("  ✗ Failed to inject key: {}", e);
-    } else {
-        println!("  ✓ {} pressed", key_name);
+    if new_x_key != x_key_pressed {
+        if let Some(old_key) = x_key_pressed {
+            let key_name = code_to_name(old_key);
+            if let Err(e) = KeyInjector::inject(old_key, KeyAction::Release) {
+                eprintln!("✗ Failed to release key: {}", e);
+            } else {
+                println!("✓ {} released", key_name);
+            }
+        }
+        if let Some(new_key) = new_x_key {
+            let key_name = code_to_name(new_key);
+            if let Err(e) = KeyInjector::inject(new_key, KeyAction::Press) {
+                eprintln!("✗ Failed to inject key: {}", e);
+            } else {
+                println!("✓ {} pressed", key_name);
+            }
+        }
+        x_key_pressed = new_x_key;
     }
+    
+    // Handle Y axis
+    let new_y_key = if y_in_deadzone {
+        None
+    } else if y > 127 {
+        Some(config.down)
+    } else {
+        Some(config.up)
+    };
+    
+    if new_y_key != y_key_pressed {
+        if let Some(old_key) = y_key_pressed {
+            let key_name = code_to_name(old_key);
+            if let Err(e) = KeyInjector::inject(old_key, KeyAction::Release) {
+                eprintln!("✗ Failed to release key: {}", e);
+            } else {
+                println!("✓ {} released", key_name);
+            }
+        }
+        if let Some(new_key) = new_y_key {
+            let key_name = code_to_name(new_key);
+            if let Err(e) = KeyInjector::inject(new_key, KeyAction::Press) {
+                eprintln!("✗ Failed to inject key: {}", e);
+            } else {
+                println!("✓ {} pressed", key_name);
+            }
+        }
+        y_key_pressed = new_y_key;
+    }
+    
+    pressed.insert(stick_key, (x_key_pressed, y_key_pressed));
 }
 
 async fn handle_trigger_axis(
@@ -213,12 +239,10 @@ async fn handle_trigger_axis(
         };
         
         let key_name = code_to_name(config.key);
-        println!("  → Trigger {:?} crossed threshold, key: {}", control, key_name);
-        
         if let Err(e) = KeyInjector::inject(config.key, action) {
-            eprintln!("  ✗ Failed to inject key: {}", e);
+            eprintln!("✗ Failed to inject key: {}", e);
         } else {
-            println!("  ✓ {} {}", key_name, if action == KeyAction::Press { "pressed" } else { "released" });
+            println!("✓ {} {}", key_name, if action == KeyAction::Press { "pressed" } else { "released" });
         }
         
         states.insert(control, is_pressed);
@@ -230,6 +254,7 @@ async fn handle_dpad_axis(
     value: u8,
     config: &DPadCodeConfig,
     state: &mut Option<(u8, u8)>,
+    pressed: &mut Option<u32>,
 ) {
     // D-Pad tracking
     let (is_x_axis, _other_control) = match control {
@@ -249,32 +274,44 @@ async fn handle_dpad_axis(
     *state = Some((x, y));
     
     // D-Pad: determine direction and send key
-    let (key_code, direction) = if x != 0 {
+    let new_key = if x != 0 {
         // Horizontal input
         if x > 127 {
-            (config.right, "right")
+            Some(config.left)
         } else {
-            (config.left, "left")
+            Some(config.right)
         }
     } else if y != 0 {
         // Vertical input
         if y > 127 {
-            (config.down, "down")
+            Some(config.up)
         } else {
-            (config.up, "up")
+            Some(config.down)
         }
     } else {
-        // Neutral, no key
-        return;
+        // Neutral, release any pressed key
+        None
     };
     
-    let key_name = code_to_name(key_code);
-    println!("  → D-Pad moved {}, key: {}", direction, key_name);
-    
-    if let Err(e) = KeyInjector::inject(key_code, KeyAction::Press) {
-        eprintln!("  ✗ Failed to inject key: {}", e);
-    } else {
-        println!("  ✓ {} pressed", key_name);
+    // Only inject if key state changed
+    if new_key != *pressed {
+        if let Some(old_key) = *pressed {
+            let key_name = code_to_name(old_key);
+            if let Err(e) = KeyInjector::inject(old_key, KeyAction::Release) {
+                eprintln!("✗ Failed to release key: {}", e);
+            } else {
+                println!("✓ {} released", key_name);
+            }
+        }
+        if let Some(new_key_code) = new_key {
+            let key_name = code_to_name(new_key_code);
+            if let Err(e) = KeyInjector::inject(new_key_code, KeyAction::Press) {
+                eprintln!("✗ Failed to inject key: {}", e);
+            } else {
+                println!("✓ {} pressed", key_name);
+            }
+        }
+        *pressed = new_key;
     }
 }
 

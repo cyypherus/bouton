@@ -50,7 +50,7 @@ pub struct DPadConfig {
     pub right: KeyCode,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy)]
 pub struct JoystickCodeConfig {
     pub deadzone: u8,
     pub up: u32,

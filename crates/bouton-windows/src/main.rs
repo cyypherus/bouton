@@ -73,29 +73,27 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("Mapped {} buttons from config", button_map.len());
 
     // Build joystick configs
-    let joystick_map: HashMap<u16, config::JoystickCodeConfig> = config
-        .keys
-        .joysticks
-        .iter()
-        .filter_map(|(stick_name, stick_config)| {
-            let axis_code = match stick_name.as_str() {
-                "LeftStick" => Some((0x00, 0x01)), // LX, LY
-                "RightStick" => Some((0x02, 0x05)), // RX, RY
-                _ => None,
-            };
-            
-            axis_code.map(|(x_code, _y_code)| (
-                x_code,
+    let mut joystick_map: HashMap<bouton_core::control::GamepadControl, config::JoystickCodeConfig> = HashMap::new();
+    for (stick_name, stick_config) in config.keys.joysticks.iter() {
+        let control = match stick_name.as_str() {
+            "LeftStick" => Some(bouton_core::control::GamepadControl::LeftStickX),
+            "RightStick" => Some(bouton_core::control::GamepadControl::RightStickX),
+            _ => None,
+        };
+        
+        if let Some(control) = control {
+            joystick_map.insert(
+                control,
                 config::JoystickCodeConfig {
                     deadzone: stick_config.deadzone.unwrap_or(20),
                     up: stick_config.up.code(),
                     down: stick_config.down.code(),
                     left: stick_config.left.code(),
                     right: stick_config.right.code(),
-                }
-            ))
-        })
-        .collect();
+                },
+            );
+        }
+    }
 
     println!("Mapped {} joysticks from config", joystick_map.len());
 

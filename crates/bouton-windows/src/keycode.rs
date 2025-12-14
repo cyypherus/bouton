@@ -355,6 +355,7 @@ impl KeyCode {
         }
     }
 
+    #[allow(dead_code)]
     pub fn name(&self) -> &'static str {
         match self {
             KeyCode::LButton => "LButton",

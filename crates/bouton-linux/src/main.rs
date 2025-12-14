@@ -23,9 +23,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args: Vec<String> = std::env::args().collect();
     
     if args.len() < 2 {
-        eprintln!("Usage: {} <gamepad_device> [server_addr] [deadzone]", args[0]);
-        eprintln!("Example: {} /dev/input/event0 127.0.0.1:8000 5", args[0]);
-        eprintln!("Deadzone: filter out joystick movement near center (0-100, default 0)");
+        eprintln!("Usage: {} <gamepad_device> [server_addr]", args[0]);
+        eprintln!("Example: {} /dev/input/event0 127.0.0.1:8000", args[0]);
         std::process::exit(1);
     }
 
@@ -35,23 +34,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     } else {
         "127.0.0.1:8000".parse()?
     };
-    
-    let deadzone: i32 = if args.len() > 3 {
-        args[3].parse().unwrap_or(0)
-    } else {
-        0
-    };
 
-    let mut gamepad = match GamepadReader::open_with_deadzone(gamepad_path, deadzone) {
+    let mut gamepad = match GamepadReader::open_with_deadzone(gamepad_path, 0) {
         Ok(g) => g,
         Err(e) => {
             eprintln!("Error opening gamepad at {}: {}", gamepad_path, e);
             eprintln!();
             eprintln!("Make sure the gamepad device exists. You can find it with:");
             eprintln!("  ls /dev/input/event*");
-            eprintln!();
-            eprintln!("Then run:");
-            eprintln!("  {} /dev/input/eventN {} {}", args[0], args.get(2).map(|s| s.as_str()).unwrap_or("127.0.0.1:8000"), args.get(3).map(|s| s.as_str()).unwrap_or("0"));
             std::process::exit(1);
         }
     };
@@ -65,9 +55,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let mut mapper = GamepadMapper::default();
     let mut state = GamepadState::new();
-    
-    // Set initial states
-    state.deadzone = deadzone;
 
     // Spawn background task to connect to server
     let client = Arc::new(Mutex::new(None));
