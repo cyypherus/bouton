@@ -1,7 +1,7 @@
-pub mod mapper;
 pub mod control;
 
 use serde::{Deserialize, Serialize};
+use control::GamepadControl;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum KeyAction {
@@ -10,29 +10,23 @@ pub enum KeyAction {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub struct ButtonEvent {
-    pub button_code: u16,
+pub struct ControlButton {
+    pub control: GamepadControl,
     pub action: KeyAction,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub struct AxisEvent {
-    pub axis_code: u16,
-    pub value: u8,
+pub struct ControlAxis {
+    pub control: GamepadControl,
+    pub value: i32,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub enum InputEvent {
+pub enum ControlEvent {
     #[serde(rename = "button")]
-    Button(ButtonEvent),
+    Button(ControlButton),
     #[serde(rename = "axis")]
-    Axis(AxisEvent),
-}
-
-impl ButtonEvent {
-    pub fn new(button_code: u16, action: KeyAction) -> Self {
-        Self { button_code, action }
-    }
+    Axis(ControlAxis),
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -62,15 +56,38 @@ impl GamepadEvent {
     }
 }
 
+impl GamepadEvent {
+    pub fn to_control(self) -> Option<ControlEvent> {
+        match self {
+            GamepadEvent::Button { code, pressed } => {
+                let control = GamepadControl::from_code(code)?;
+                let action = if pressed {
+                    KeyAction::Press
+                } else {
+                    KeyAction::Release
+                };
+                Some(ControlEvent::Button(ControlButton { control, action }))
+            }
+            GamepadEvent::Axis { code, value } => {
+                let control = GamepadControl::from_code(code)?;
+                Some(ControlEvent::Axis(ControlAxis { control, value }))
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
-    fn button_event_serializes_to_json() {
-        let event = ButtonEvent::new(0x130, KeyAction::Press);
+    fn control_button_event_serializes() {
+        let event = ControlButton {
+            control: GamepadControl::Square,
+            action: KeyAction::Press,
+        };
         let json = serde_json::to_string(&event).unwrap();
-        assert!(json.contains("0x130") || json.contains("304"));
+        assert!(json.contains("Square"));
         assert!(json.contains("Press"));
     }
 

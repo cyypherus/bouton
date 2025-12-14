@@ -2,7 +2,7 @@ mod gamepad;
 mod socket_client;
 mod ui;
 
-use bouton_core::mapper::GamepadMapper;
+
 use crossterm::{
     event::{self, Event, KeyCode},
     execute,
@@ -35,7 +35,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         "127.0.0.1:8000".parse()?
     };
 
-    let mut gamepad = match GamepadReader::open_with_deadzone(gamepad_path, 0) {
+    let mut gamepad = match GamepadReader::open(gamepad_path) {
         Ok(g) => g,
         Err(e) => {
             eprintln!("Error opening gamepad at {}: {}", gamepad_path, e);
@@ -53,7 +53,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
 
-    let mut mapper = GamepadMapper::default();
     let mut state = GamepadState::new();
 
     // Spawn background task to connect to server
@@ -120,14 +119,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 for event in events {
                     state.update(&event);
 
-                    if let Some(mapped_event) = mapper.map_event(&event) {
-                        let mut client_guard = client.lock().await;
-                        if let Some(ref mut c) = client_guard.as_mut() {
-                            if c.send_event(mapped_event).await.is_err() {
-                                // Server disconnected
-                                *client_guard = None;
-                                *state_server_status.lock().await = ui::ConnectionState::Error;
-                            }
+                    let mut client_guard = client.lock().await;
+                    if let Some(ref mut c) = client_guard.as_mut() {
+                        if c.send_event(event).await.is_err() {
+                            // Server disconnected
+                            *client_guard = None;
+                            *state_server_status.lock().await = ui::ConnectionState::Error;
                         }
                     }
                 }

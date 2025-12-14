@@ -1,4 +1,4 @@
-use bouton_core::GamepadEvent;
+use bouton_core::{ControlEvent, KeyAction, control::GamepadControl};
 use ratatui::{
     Frame,
     layout::{Constraint, Direction, Layout, Rect},
@@ -19,13 +19,12 @@ pub enum ConnectionState {
 }
 
 pub struct GamepadState {
-    pub buttons: HashMap<u16, bool>,
-    pub axes: HashMap<u16, i32>,
+    pub buttons: HashMap<GamepadControl, bool>,
+    pub axes: HashMap<GamepadControl, i32>,
     pub log: VecDeque<String>,
     pub gamepad_state: ConnectionState,
     pub gamepad_error: Option<String>,
     pub server_state: ConnectionState,
-    pub deadzone: i32,
 }
 
 impl GamepadState {
@@ -37,27 +36,27 @@ impl GamepadState {
             gamepad_state: ConnectionState::Connecting,
             gamepad_error: None,
             server_state: ConnectionState::Connecting,
-            deadzone: 0,
         }
     }
 
-    pub fn update(&mut self, event: &GamepadEvent) {
+    pub fn update(&mut self, event: &ControlEvent) {
         match event {
-            GamepadEvent::Button { code, pressed } => {
-                self.buttons.insert(*code, *pressed);
-                let button_name = button_name(*code);
-                let status = if *pressed { "PRESSED" } else { "RELEASED" };
+            ControlEvent::Button(btn) => {
+                self.buttons.insert(btn.control, matches!(btn.action, KeyAction::Press));
+                let status = match btn.action {
+                    KeyAction::Press => "PRESSED",
+                    KeyAction::Release => "RELEASED",
+                };
                 self.add_log(format!(
-                    "Button {}: {} (code: 0x{:X})",
-                    button_name, status, code
+                    "Button {}: {}",
+                    btn.control, status
                 ));
             }
-            GamepadEvent::Axis { code, value } => {
-                self.axes.insert(*code, *value);
-                let axis_name = axis_name(*code);
+            ControlEvent::Axis(axis) => {
+                self.axes.insert(axis.control, axis.value);
                 self.add_log(format!(
-                    "Axis {}: {} (code: 0x{:X})",
-                    axis_name, value, code
+                    "Axis {}: {}",
+                    axis.control, axis.value
                 ));
             }
         }
@@ -114,11 +113,6 @@ fn draw_status(f: &mut Frame, state: &GamepadState, area: Rect) {
             format!("{} Server", server_status.0),
             Style::default().fg(server_status.1),
         ),
-        Span::raw(if state.deadzone > 0 {
-            format!("  (deadzone: {})", state.deadzone)
-        } else {
-            String::new()
-        }),
         Span::raw("  "),
         Span::styled(
             "Press Q or Esc to exit",
@@ -142,29 +136,26 @@ fn draw_buttons_and_axes(f: &mut Frame, state: &GamepadState, area: Rect) {
 }
 
 fn draw_buttons(f: &mut Frame, state: &GamepadState, area: Rect) {
-    let button_codes = vec![
-        0x130, 0x131, 0x132, 0x133, 0x134, 0x135, 0x138, 0x139, 0x13A, 0x13B, 0x13D, 0x13C, 0x13E,
-    ];
-    let button_names = vec![
-        "□ Square",
-        "✕ Cross",
-        "○ Circle",
-        "△ Triangle",
-        "L1",
-        "R1",
-        "Select",
-        "Start",
-        "L3",
-        "R3",
-        "Touch",
-        "Aux1",
-        "Aux2",
+    let buttons = vec![
+        GamepadControl::Square,
+        GamepadControl::Cross,
+        GamepadControl::Circle,
+        GamepadControl::Triangle,
+        GamepadControl::L1,
+        GamepadControl::R1,
+        GamepadControl::Select,
+        GamepadControl::Start,
+        GamepadControl::L3,
+        GamepadControl::R3,
+        GamepadControl::Touch,
+        GamepadControl::Aux1,
+        GamepadControl::Aux2,
     ];
 
     let mut text = vec![];
 
-    for (code, name) in button_codes.iter().zip(button_names.iter()) {
-        let pressed = state.buttons.get(code).copied().unwrap_or(false);
+    for control in buttons {
+        let pressed = state.buttons.get(&control).copied().unwrap_or(false);
         let style = if pressed {
             Style::default().fg(Color::Green).bg(Color::DarkGray)
         } else {
@@ -172,9 +163,8 @@ fn draw_buttons(f: &mut Frame, state: &GamepadState, area: Rect) {
         };
         text.push(Line::from(Span::styled(
             format!(
-                "  {} (0x{:X}): {}",
-                name,
-                code,
+                "  {}: {}",
+                control,
                 if pressed { "●" } else { "○" }
             ),
             style,
@@ -189,24 +179,23 @@ fn draw_buttons(f: &mut Frame, state: &GamepadState, area: Rect) {
 }
 
 fn draw_axes(f: &mut Frame, state: &GamepadState, area: Rect) {
-    let axis_codes = vec![0x00, 0x01, 0x02, 0x05, 0x03, 0x04, 0x10, 0x11];
-    let axis_names = vec![
-        "Left Stick X",
-        "Left Stick Y",
-        "Right Stick X",
-        "Right Stick Y",
-        "L2",
-        "R2",
-        "D-Pad X",
-        "D-Pad Y",
+    let axes = vec![
+        GamepadControl::LeftStickX,
+        GamepadControl::LeftStickY,
+        GamepadControl::RightStickX,
+        GamepadControl::RightStickY,
+        GamepadControl::L2,
+        GamepadControl::R2,
+        GamepadControl::DPadX,
+        GamepadControl::DPadY,
     ];
 
     let mut text = vec![];
 
-    for (code, name) in axis_codes.iter().zip(axis_names.iter()) {
-        let value = state.axes.get(code).copied().unwrap_or(0);
+    for control in axes {
+        let value = state.axes.get(&control).copied().unwrap_or(0);
         text.push(Line::from(Span::styled(
-            format!("  {}: {:6}", name, value),
+            format!("  {}: {:6}", control, value),
             Style::default().fg(Color::Cyan),
         )));
     }
@@ -226,39 +215,4 @@ fn draw_log(f: &mut Frame, state: &GamepadState, area: Rect) {
     let block = Block::default().title("Event Log").borders(Borders::ALL);
     let paragraph = Paragraph::new(log_lines).block(block);
     f.render_widget(paragraph, area);
-}
-
-fn button_name(code: u16) -> &'static str {
-    match code {
-        0x130 => "□ Square",
-        0x131 => "✕ Cross",
-        0x132 => "○ Circle",
-        0x133 => "△ Triangle",
-        0x134 => "L1",
-        0x135 => "R1",
-        0x136 => "L2",
-        0x137 => "R2",
-        0x138 => "Select",
-        0x139 => "Start",
-        0x13A => "L3",
-        0x13B => "R3",
-        0x13D => "Touch",
-        0x13C => "Aux1",
-        0x13E => "Aux2",
-        _ => "Unknown",
-    }
-}
-
-fn axis_name(code: u16) -> &'static str {
-    match code {
-        0x00 => "Left Stick X",
-        0x01 => "Left Stick Y",
-        0x02 => "Right Stick X",
-        0x05 => "Right Stick Y",
-        0x03 => "L2",
-        0x04 => "R2",
-        0x10 => "D-Pad X",
-        0x11 => "D-Pad Y",
-        _ => "Unknown",
-    }
 }

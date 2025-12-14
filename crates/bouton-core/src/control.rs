@@ -1,4 +1,7 @@
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+use std::fmt;
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum GamepadControl {
     // Buttons
     Square,
@@ -28,6 +31,35 @@ pub enum GamepadControl {
     // D-Pad
     DPadX,
     DPadY,
+}
+
+impl fmt::Display for GamepadControl {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let name = match self {
+            GamepadControl::Square => "□ Square",
+            GamepadControl::Cross => "✕ Cross",
+            GamepadControl::Circle => "○ Circle",
+            GamepadControl::Triangle => "△ Triangle",
+            GamepadControl::L1 => "L1",
+            GamepadControl::R1 => "R1",
+            GamepadControl::L3 => "L3",
+            GamepadControl::R3 => "R3",
+            GamepadControl::Select => "Select",
+            GamepadControl::Start => "Start",
+            GamepadControl::Touch => "Touch",
+            GamepadControl::Aux1 => "Aux1",
+            GamepadControl::Aux2 => "Aux2",
+            GamepadControl::LeftStickX => "Left Stick X",
+            GamepadControl::LeftStickY => "Left Stick Y",
+            GamepadControl::RightStickX => "Right Stick X",
+            GamepadControl::RightStickY => "Right Stick Y",
+            GamepadControl::L2 => "L2",
+            GamepadControl::R2 => "R2",
+            GamepadControl::DPadX => "D-Pad X",
+            GamepadControl::DPadY => "D-Pad Y",
+        };
+        write!(f, "{}", name)
+    }
 }
 
 impl GamepadControl {

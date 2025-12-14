@@ -8,6 +8,7 @@ use socket_server::SocketServer;
 use std::env;
 use std::path::PathBuf;
 use std::collections::HashMap;
+use bouton_core::control::GamepadControl;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -43,30 +44,30 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
 
     // Build button code to key code mapping
-    let button_map: HashMap<u16, u32> = config
+    let button_map: HashMap<GamepadControl, u32> = config
         .keys
         .buttons
         .iter()
         .filter_map(|(button_name, key_code_enum)| {
-            let button_code = match button_name.as_str() {
-                "Square" => Some(0x130),
-                "Cross" => Some(0x131),
-                "Circle" => Some(0x132),
-                "Triangle" => Some(0x133),
-                "L1" => Some(0x134),
-                "R1" => Some(0x135),
-                "L2" => Some(0x136),
-                "R2" => Some(0x137),
-                "Select" => Some(0x138),
-                "Start" => Some(0x139),
-                "L3" => Some(0x13A),
-                "R3" => Some(0x13B),
-                "Touch" => Some(0x13D),
-                "Aux1" => Some(0x13C),
-                "Aux2" => Some(0x13E),
+            let control = match button_name.as_str() {
+                "Square" => Some(GamepadControl::Square),
+                "Cross" => Some(GamepadControl::Cross),
+                "Circle" => Some(GamepadControl::Circle),
+                "Triangle" => Some(GamepadControl::Triangle),
+                "L1" => Some(GamepadControl::L1),
+                "R1" => Some(GamepadControl::R1),
+                "L2" => Some(GamepadControl::L2),
+                "R2" => Some(GamepadControl::R2),
+                "Select" => Some(GamepadControl::Select),
+                "Start" => Some(GamepadControl::Start),
+                "L3" => Some(GamepadControl::L3),
+                "R3" => Some(GamepadControl::R3),
+                "Touch" => Some(GamepadControl::Touch),
+                "Aux1" => Some(GamepadControl::Aux1),
+                "Aux2" => Some(GamepadControl::Aux2),
                 _ => None,
             };
-            button_code.map(|code| (code, key_code_enum.code()))
+            control.map(|c| (c, key_code_enum.code()))
         })
         .collect();
 
@@ -98,19 +99,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("Mapped {} joysticks from config", joystick_map.len());
 
     // Build trigger configs
-    let trigger_map: HashMap<u16, config::TriggerCodeConfig> = config
+    let trigger_map: HashMap<GamepadControl, config::TriggerCodeConfig> = config
         .keys
         .triggers
         .iter()
         .filter_map(|(trigger_name, trigger_config)| {
-            let axis_code = match trigger_name.as_str() {
-                "L2" => Some(0x03),
-                "R2" => Some(0x04),
+            let control = match trigger_name.as_str() {
+                "L2" => Some(GamepadControl::L2),
+                "R2" => Some(GamepadControl::R2),
                 _ => None,
             };
             
-            axis_code.map(|code| (
-                code,
+            control.map(|c| (
+                c,
                 config::TriggerCodeConfig {
                     key: trigger_config.key.code(),
                     threshold: trigger_config.threshold.unwrap_or(127),

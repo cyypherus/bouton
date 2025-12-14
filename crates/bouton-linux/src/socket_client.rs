@@ -1,4 +1,4 @@
-use bouton_core::InputEvent;
+use bouton_core::ControlEvent;
 use std::net::SocketAddr;
 use tokio::net::UdpSocket;
 
@@ -13,7 +13,7 @@ impl SocketClient {
         Ok(Self { socket, server_addr })
     }
 
-    pub async fn send_event(&mut self, event: InputEvent) -> std::io::Result<()> {
+    pub async fn send_event(&mut self, event: ControlEvent) -> std::io::Result<()> {
         let bytes = bincode::serialize(&event)
             .map_err(|_| std::io::Error::new(std::io::ErrorKind::InvalidData, "encoding failed"))?;
         
