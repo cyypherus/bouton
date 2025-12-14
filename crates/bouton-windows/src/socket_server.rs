@@ -323,7 +323,7 @@ async fn handle_trigger_axis(
     ui_tx: mpsc::UnboundedSender<UIEvent>,
 ) {
     let was_pressed = states.get(&control).copied().unwrap_or(false);
-    let is_pressed = value > config.threshold;
+    let is_pressed = value > config.deadzone;
 
     // Only inject on state change
     if is_pressed != was_pressed {

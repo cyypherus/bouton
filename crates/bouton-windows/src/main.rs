@@ -123,7 +123,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 c,
                 config::TriggerCodeConfig {
                     key: trigger_config.key.code(),
-                    threshold: trigger_config.threshold.unwrap_or(127),
+                    deadzone: trigger_config.deadzone.unwrap_or(127),
                 }
             ))
         })
