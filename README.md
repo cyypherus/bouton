@@ -52,7 +52,7 @@ You can either use the automated setup or run the commands manually.
 
 **Option A: Automated Setup**
 
-Run `bouton-setup` on Windows and it will walk you through the entire process.
+Run `bouton-setup` on Windows and it will walk you through the entire process, but first you should have all the prerequisites setup. (bouton-linux should be installed on wsl & bouton-windows and usbipd should be installed on windows)
 
 **Option B: Manual Setup**
 
