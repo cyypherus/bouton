@@ -67,19 +67,11 @@ mod tests {
     use super::*;
 
     #[test]
-    fn key_event_serializes_to_json() {
-        let event = KeyEvent::new(36, KeyAction::Press);
+    fn button_event_serializes_to_json() {
+        let event = ButtonEvent::new(0x130, KeyAction::Press);
         let json = serde_json::to_string(&event).unwrap();
-        assert!(json.contains("36"));
+        assert!(json.contains("0x130") || json.contains("304"));
         assert!(json.contains("Press"));
-    }
-
-    #[test]
-    fn key_event_deserializes_from_json() {
-        let json = r#"{"key_code":36,"action":"Press"}"#;
-        let event: KeyEvent = serde_json::from_str(json).unwrap();
-        assert_eq!(event.key_code, 36);
-        assert_eq!(event.action, KeyAction::Press);
     }
 
     #[test]

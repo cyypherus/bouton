@@ -24,14 +24,26 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         eprintln!("Creating default config at {}", config_path.display());
         std::fs::write(&config_path, Config::default_toml())?;
         println!("Edit {} and run again", config_path.display());
+        println!("\nPress Enter to exit...");
+        let _ = std::io::stdin().read_line(&mut String::new());
         return Ok(());
     }
 
-    let config = Config::load(&config_path)?;
-    println!("Loaded config from {}", config_path.display());
+    let config = match Config::load(&config_path) {
+        Ok(cfg) => {
+            println!("Loaded config from {}", config_path.display());
+            cfg
+        }
+        Err(e) => {
+            eprintln!("Error loading config: {}", e);
+            println!("\nPress Enter to exit...");
+            let _ = std::io::stdin().read_line(&mut String::new());
+            return Err(e);
+        }
+    };
 
     // Build button code to key code mapping
-    let button_map: std::collections::HashMap<u16, u32> = config
+    let button_map: HashMap<u16, u32> = config
         .keys
         .buttons
         .iter()
@@ -60,41 +72,77 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     println!("Mapped {} buttons from config", button_map.len());
 
-    // Build axis code to config mapping
-    let axis_map: HashMap<u16, config::AxisCodeConfig> = config
+    // Build joystick configs
+    let joystick_map: HashMap<u16, config::JoystickCodeConfig> = config
         .keys
-        .axes
+        .joysticks
         .iter()
-        .filter_map(|(axis_name, axis_config)| {
-            let axis_code = match axis_name.as_str() {
-                "LX" => Some(0x00),   // Left Stick X
-                "LY" => Some(0x01),   // Left Stick Y
-                "RX" => Some(0x02),   // Right Stick X
-                "RY" => Some(0x05),   // Right Stick Y
-                "L2" => Some(0x03),   // L2 Trigger
-                "R2" => Some(0x04),   // R2 Trigger
-                "DPadX" => Some(0x10), // D-Pad X
-                "DPadY" => Some(0x11), // D-Pad Y
+        .filter_map(|(stick_name, stick_config)| {
+            let axis_code = match stick_name.as_str() {
+                "LeftStick" => Some((0x00, 0x01)), // LX, LY
+                "RightStick" => Some((0x02, 0x05)), // RX, RY
                 _ => None,
             };
             
-            // Convert KeyCode enums to codes
-            let above_code = axis_config.above.map(|kc| kc.code());
-            let below_code = axis_config.below.map(|kc| kc.code());
-            
-            axis_code.map(|code| (code, config::AxisCodeConfig {
-                above: above_code,
-                below: below_code,
-            }))
+            axis_code.map(|(x_code, _y_code)| (
+                x_code,
+                config::JoystickCodeConfig {
+                    deadzone: stick_config.deadzone.unwrap_or(20),
+                    up: stick_config.up.code(),
+                    down: stick_config.down.code(),
+                    left: stick_config.left.code(),
+                    right: stick_config.right.code(),
+                }
+            ))
         })
         .collect();
 
-    println!("Mapped {} axes from config", axis_map.len());
+    println!("Mapped {} joysticks from config", joystick_map.len());
+
+    // Build trigger configs
+    let trigger_map: HashMap<u16, config::TriggerCodeConfig> = config
+        .keys
+        .triggers
+        .iter()
+        .filter_map(|(trigger_name, trigger_config)| {
+            let axis_code = match trigger_name.as_str() {
+                "L2" => Some(0x03),
+                "R2" => Some(0x04),
+                _ => None,
+            };
+            
+            axis_code.map(|code| (
+                code,
+                config::TriggerCodeConfig {
+                    key: trigger_config.key.code(),
+                    threshold: trigger_config.threshold.unwrap_or(127),
+                }
+            ))
+        })
+        .collect();
+
+    println!("Mapped {} triggers from config", trigger_map.len());
+
+    // Build D-Pad config
+    let dpad_config: Option<config::DPadCodeConfig> = config
+        .keys
+        .dpad
+        .get("DPad")
+        .map(|dpad| config::DPadCodeConfig {
+            up: dpad.up.code(),
+            down: dpad.down.code(),
+            left: dpad.left.code(),
+            right: dpad.right.code(),
+        });
+
+    if dpad_config.is_some() {
+        println!("Mapped D-Pad from config");
+    }
 
     let addr = format!("{}:{}", config.server.listen_addr, config.server.listen_port);
     let addr: std::net::SocketAddr = addr.parse()?;
     
-    let server = SocketServer::bind(addr, button_map, axis_map).await?;
+    let server = SocketServer::bind(addr, button_map, joystick_map, trigger_map, dpad_config).await?;
     
     println!("Bouton server listening on {}", addr);
     server.run().await?;

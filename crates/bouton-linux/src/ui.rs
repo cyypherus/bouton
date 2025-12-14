@@ -68,7 +68,7 @@ impl GamepadState {
 pub fn draw(f: &mut Frame, state: &GamepadState) {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
-        .constraints([Constraint::Length(3), Constraint::Min(0)])
+        .constraints([Constraint::Length(4), Constraint::Min(0)])
         .split(f.size());
 
     draw_status(f, state, chunks[0]);
@@ -117,6 +117,11 @@ fn draw_status(f: &mut Frame, state: &GamepadState, area: Rect) {
             } else {
                 String::new()
             }),
+            Span::raw("  "),
+            Span::styled(
+                "Press Q or Esc to exit",
+                Style::default().fg(Color::DarkGray),
+            ),
         ]),
     ];
 
@@ -179,12 +184,7 @@ fn draw_axes(f: &mut Frame, state: &GamepadState, area: Rect) {
         "D-Pad Y"
     ];
 
-    let mut text = vec![Line::from(Span::styled(
-        "AXES",
-        Style::default()
-            .fg(Color::White)
-            .add_modifier(Modifier::BOLD),
-    ))];
+    let mut text = vec![];
 
     for (code, name) in axis_codes.iter().zip(axis_names.iter()) {
         let value = state.axes.get(code).copied().unwrap_or(0);

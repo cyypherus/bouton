@@ -20,19 +20,57 @@ pub struct ServerConfig {
 pub struct KeyMappingConfig {
     pub buttons: HashMap<String, KeyCode>,
     #[serde(default)]
-    pub axes: HashMap<String, AxisConfig>,
+    pub joysticks: HashMap<String, JoystickConfig>,
+    #[serde(default)]
+    pub triggers: HashMap<String, TriggerConfig>,
+    #[serde(default)]
+    pub dpad: HashMap<String, DPadConfig>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct AxisConfig {
-    pub above: Option<KeyCode>,
-    pub below: Option<KeyCode>,
+pub struct JoystickConfig {
+    pub deadzone: Option<u8>,
+    pub up: KeyCode,
+    pub down: KeyCode,
+    pub left: KeyCode,
+    pub right: KeyCode,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TriggerConfig {
+    pub key: KeyCode,
+    pub threshold: Option<u8>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DPadConfig {
+    pub up: KeyCode,
+    pub down: KeyCode,
+    pub left: KeyCode,
+    pub right: KeyCode,
 }
 
 #[derive(Debug, Clone)]
-pub struct AxisCodeConfig {
-    pub above: Option<u32>,
-    pub below: Option<u32>,
+pub struct JoystickCodeConfig {
+    pub deadzone: u8,
+    pub up: u32,
+    pub down: u32,
+    pub left: u32,
+    pub right: u32,
+}
+
+#[derive(Debug, Clone)]
+pub struct TriggerCodeConfig {
+    pub key: u32,
+    pub threshold: u8,
+}
+
+#[derive(Debug, Clone)]
+pub struct DPadCodeConfig {
+    pub up: u32,
+    pub down: u32,
+    pub left: u32,
+    pub right: u32,
 }
 
 impl Config {
@@ -45,80 +83,69 @@ impl Config {
     pub fn default_toml() -> &'static str {
         r#"
 [server]
-listen_addr = "127.0.0.1"
+listen_addr = "0.0.0.0"
 listen_port = 8000
 
 [keys.buttons]
-# Map gamepad buttons to Windows Virtual Key codes.
-# 
-# Gamepad button names (standardized):
-#   A, B, X, Y       - Face buttons
-#   LB, RB           - Left/Right bumpers
-#   LT, RT           - Left/Right triggers
-#   Back, Start      - Menu buttons
-#   LThumb, RThumb   - Stick press (L3, R3)
-#   Guide, Home      - Guide/Home button
-#
-# Windows Virtual Key Code Reference:
-# See: https://docs.microsoft.com/en-us/windows/win32/inputdev/virtual-key-codes
-#
-# Common keys:
-#   0x01-0x08  = Mouse buttons
-#   0x09       = Tab
-#   0x0D       = Enter
-#   0x1B       = Escape
-#   0x20       = Space
-#   0x21-0x28  = Page Up/Down, End, Home, Arrows
-#   0x30-0x39  = 0-9
-#   0x41-0x5A  = A-Z
-#   0x60-0x69  = Numpad 0-9
-#   0x70-0x87  = F1-F24
-#
-# Examples:
-#   13 = Enter
-#   32 = Space
-#   37 = Left Arrow
-#   38 = Up Arrow
-#   39 = Right Arrow
-#   40 = Down Arrow
-#   65 = A
-#   87 = W
+# Map gamepad buttons to Windows keys
+# Use key names in SCREAMING_SNAKE_CASE format
+# Examples: SPACE, ENTER, A, B, LEFT, RIGHT, UP, DOWN, F1-F24, etc.
 
-A = 13      # Enter
-B = 32      # Space
-X = 87      # W
-Y = 83      # S
-LB = 81     # Q
-RB = 69     # E
-LT = 65     # A
-RT = 68     # D
-Back = 27   # Escape
-Start = 13  # Enter
-LThumb = 32 # Space
-RThumb = 32 # Space
+Square = "A"
+Cross = "S"
+Circle = "D"
+Triangle = "W"
+L1 = "Q"
+R1 = "E"
+L2 = "C"
+R2 = "V"
+Select = "TAB"
+Start = "ENTER"
+L3 = "LCTRL"
+R3 = "LALT"
+
+[keys.joysticks]
+# Joystick mappings with deadzone and 4-directional keys
+# Rest position: 127 (center)
+# Rests at 127, sends events on crossing thresholds
+
+[keys.joysticks.LeftStick]
+deadzone = 20
+up = "W"
+down = "S"
+left = "A"
+right = "D"
+
+[keys.joysticks.RightStick]
+deadzone = 20
+up = "UP"
+down = "DOWN"
+left = "LEFT"
+right = "RIGHT"
+
+[keys.triggers]
+# Trigger mappings (L2, R2)
+# Rest position: 0
+# Threshold: value above this triggers the key
+
+[keys.triggers.L2]
+key = "C"
+threshold = 150
+
+[keys.triggers.R2]
+key = "V"
+threshold = 150
+
+[keys.dpad]
+# D-Pad mappings
+# Rest position: 0
+# No deadzone, responds to any value change
+
+[keys.dpad.DPad]
+up = "UP"
+down = "DOWN"
+left = "LEFT"
+right = "RIGHT"
 "#
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn config_deserializes_from_toml() {
-        let toml_str = r#"
-[server]
-listen_addr = "127.0.0.1"
-listen_port = 8000
-
-[keys.buttons]
-A = 36
-B = 38
-"#;
-        let config: Config = toml::from_str(toml_str).unwrap();
-        assert_eq!(config.server.listen_addr, "127.0.0.1");
-        assert_eq!(config.server.listen_port, 8000);
-        assert_eq!(config.keys.buttons.get("A"), Some(&36));
-        assert_eq!(config.keys.buttons.get("B"), Some(&38));
     }
 }

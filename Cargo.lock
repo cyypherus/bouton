@@ -39,10 +39,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "bouton"
-version = "0.1.0"
-
-[[package]]
 name = "bouton-core"
 version = "0.1.0"
 dependencies = [
@@ -63,6 +59,10 @@ dependencies = [
  "serde_json",
  "tokio",
 ]
+
+[[package]]
+name = "bouton-setup"
+version = "0.1.0"
 
 [[package]]
 name = "bouton-windows"
