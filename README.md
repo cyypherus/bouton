@@ -2,6 +2,10 @@
 
 Bouton is an accessibility tool that converts gamepad input into keyboard events - making it *impossible* for applications on windows to intercept HID events from the gamepad. It shares use cases with software like Joy2Key / AntimicroX / HidHide but is geared towards more technical users.
 
+<img width="500" height="400" alt="Screenshot 2025-12-14 152733" src="https://github.com/user-attachments/assets/541332c1-ce51-4fcd-840c-5f6111c2a1a4" />
+<img width="500" height="400" alt="Screenshot 2025-12-14 152718" src="https://github.com/user-attachments/assets/5231fee1-2856-468d-8f65-b599c74b0b41" />
+
+
 ## Problem
 
 Games and applications can detect gamepad input directly from the operating system. This means accessibility software that maps gamepad buttons to keyboard keys may be bypassed, as the application can still see and respond to the raw gamepad events. Bouton solves this by moving the gamepad to a Linux subsystem where it reads the raw input, then sends mapped key presses to Windows. Windows only sees keyboard events, not gamepad events, preventing any bypassing.
