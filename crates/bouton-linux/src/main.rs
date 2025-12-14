@@ -53,7 +53,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
 
-    let mut state = GamepadState::new();
+    let mut state = GamepadState::new(server_addr.to_string());
 
     // Spawn background task to connect to server
     let client = Arc::new(Mutex::new(None));

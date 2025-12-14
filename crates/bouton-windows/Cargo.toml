@@ -11,3 +11,5 @@ bincode = "1.3"
 toml = "0.8"
 windows = { version = "0.52", features = ["Win32_UI_Input_KeyboardAndMouse"] }
 lazy_static = "1.4"
+ratatui = "0.28"
+crossterm = "0.28"

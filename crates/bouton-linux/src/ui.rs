@@ -25,10 +25,11 @@ pub struct GamepadState {
     pub gamepad_state: ConnectionState,
     pub gamepad_error: Option<String>,
     pub server_state: ConnectionState,
+    pub server_addr: String,
 }
 
 impl GamepadState {
-    pub fn new() -> Self {
+    pub fn new(server_addr: String) -> Self {
         Self {
             buttons: HashMap::new(),
             axes: HashMap::new(),
@@ -36,6 +37,7 @@ impl GamepadState {
             gamepad_state: ConnectionState::Connecting,
             gamepad_error: None,
             server_state: ConnectionState::Connecting,
+            server_addr,
         }
     }
 
@@ -100,6 +102,8 @@ fn draw_status(f: &mut Frame, state: &GamepadState, area: Rect) {
         ConnectionState::Error => ("⚠", Color::Red),
     };
 
+    let server_text = format!("{} Server: {}", server_status.0, state.server_addr);
+
     let gamepad_text = if let Some(ref err) = state.gamepad_error {
         format!("{} Gamepad: {}", gamepad_status.0, err)
     } else {
@@ -107,12 +111,9 @@ fn draw_status(f: &mut Frame, state: &GamepadState, area: Rect) {
     };
 
     let status_text = vec![Line::from(vec![
+        Span::styled(server_text, Style::default().fg(server_status.1)),
+        Span::raw("  "),
         Span::styled(gamepad_text, Style::default().fg(gamepad_status.1)),
-        Span::raw(" "),
-        Span::styled(
-            format!("{} Server", server_status.0),
-            Style::default().fg(server_status.1),
-        ),
         Span::raw("  "),
         Span::styled(
             "Press Q or Esc to exit",

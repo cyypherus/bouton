@@ -2,13 +2,22 @@ mod config;
 mod key_injector;
 mod keycode;
 mod socket_server;
+mod ui;
 
 use config::Config;
-use socket_server::SocketServer;
+use socket_server::{SocketServer, UIEvent};
 use std::env;
 use std::path::PathBuf;
 use std::collections::HashMap;
 use bouton_core::control::GamepadControl;
+use tokio::sync::mpsc;
+use crossterm::{
+    event::{self, Event, KeyCode},
+    execute,
+    terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
+};
+use ratatui::backend::CrosstermBackend;
+use ratatui::Terminal;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -141,10 +150,71 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let addr = format!("{}:{}", config.server.listen_addr, config.server.listen_port);
     let addr: std::net::SocketAddr = addr.parse()?;
     
-    let server = SocketServer::bind(addr, button_map, joystick_map, trigger_map, dpad_config).await?;
+    // Create UI event channel
+    let (ui_tx, mut ui_rx) = mpsc::unbounded_channel::<UIEvent>();
     
-    println!("Bouton server listening on {}", addr);
-    server.run().await?;
+    let server = SocketServer::bind(addr, button_map, joystick_map, trigger_map, dpad_config, ui_tx).await?;
+    
+    // Setup terminal for TUI
+    enable_raw_mode()?;
+    let mut stdout = std::io::stdout();
+    execute!(stdout, EnterAlternateScreen)?;
+    let backend = CrosstermBackend::new(stdout);
+    let mut terminal = Terminal::new(backend)?;
+    
+    // Initialize UI state
+    let mut ui_state = ui::KeyInjectionState::new();
+    
+    // Spawn server task
+    let server_handle = tokio::spawn(server.run());
+    
+    // Main TUI loop
+    loop {
+        // Check for keyboard input (non-blocking)
+        if event::poll(std::time::Duration::from_millis(100))? {
+            if let Event::Key(key) = event::read()? {
+                if key.code == KeyCode::Char('q') || key.code == KeyCode::Esc {
+                    break;
+                }
+            }
+        }
+        
+        // Process any pending UI events from the server
+         while let Ok(ui_event) = ui_rx.try_recv() {
+             match ui_event {
+                 UIEvent::ClientConnected(addr) => {
+                     ui_state.log_client_connected(addr);
+                 }
+                 UIEvent::KeyPressed(key_name, key_code) => {
+                     ui_state.log_key_injection(key_name, "pressed".to_string(), key_code);
+                 }
+                 UIEvent::KeyReleased(key_name, key_code) => {
+                     ui_state.log_key_injection(key_name, "released".to_string(), key_code);
+                 }
+                 UIEvent::Unbound(control) => {
+                     ui_state.log_unbound(control);
+                 }
+                 UIEvent::Error(msg) => {
+                     ui_state.add_log(format!("✗ {}", msg));
+                 }
+             }
+         }
+        
+        // Render the UI
+        terminal.draw(|f| {
+            ui::draw(f, &ui_state);
+        })?;
+        
+        // Check if server task has finished (shouldn't happen unless error)
+        if server_handle.is_finished() {
+            break;
+        }
+    }
+    
+    // Cleanup terminal
+    disable_raw_mode()?;
+    execute!(terminal.backend_mut(), LeaveAlternateScreen)?;
+    terminal.show_cursor()?;
     
     Ok(())
 }
