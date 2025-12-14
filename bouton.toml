@@ -1,0 +1,92 @@
+[server]
+listen_addr = "0.0.0.0"
+listen_port = 8000
+
+[keys.buttons]
+# Map gamepad buttons to Windows Virtual Key codes.
+# 
+# Gamepad button names (PlayStation standard):
+#   Square, Cross, Circle, Triangle  - Face buttons
+#   L1, R1                           - Left/Right bumpers (LB, RB)
+#   L2, R2                           - Left/Right triggers (LT, RT)
+#   Select, Start                    - Menu buttons
+#   L3, R3                           - Stick press
+#
+# Windows Virtual Key Code Reference:
+# See: https://docs.microsoft.com/en-us/windows/win32/inputdev/virtual-key-codes
+#
+# Common keys:
+#   0x01-0x08  = Mouse buttons
+#   0x09       = Tab
+#   0x0D       = Enter
+#   0x1B       = Escape
+#   0x20       = Space
+#   0x21-0x28  = Page Up/Down, End, Home, Arrows
+#   0x30-0x39  = 0-9
+#   0x41-0x5A  = A-Z
+#   0x60-0x69  = Numpad 0-9
+#   0x70-0x87  = F1-F24
+#   0xA0-0xA5  = Shift/Control/Alt variants
+#
+# Examples:
+#   13 = Enter
+#   32 = Space
+#   37 = Left Arrow
+#   38 = Up Arrow
+#   39 = Right Arrow
+#   40 = Down Arrow
+#   65 = A
+#   87 = W
+#   etc.
+
+# Square = "A"
+# Cross = "Space"
+# Circle = "W"
+# Triangle = "S"
+# L1 = "Q"
+# R1 = "E"
+# L2 = "A"
+# R2 = "D"
+# Select = "Escape"
+# Start = "Enter"
+# L3 = "Space"
+# R3 = "Space"
+# Touch = "Space"
+# Aux1 = "Space"
+# Aux2 = "Space"
+
+[keys.axes]
+# Map gamepad axes to Windows Virtual Key codes.
+# Axes split at value 127: above=key for >127, below=key for <=127
+# Valid axes: LX, LY, RX, RY, L2, R2, DPadX, DPadY
+
+# Example: Left Stick X
+# [keys.axes.LX]
+# above = "Right"
+# below = "Left"
+
+# [keys.axes.LY]
+# above = "Down"
+# below = "Up"
+
+# [keys.axes.RX]
+# above = "Right"
+# below = "Left"
+
+# [keys.axes.RY]
+# above = "Down"
+# below = "Up"
+
+# [keys.axes.L2]
+# above = "A"
+
+# [keys.axes.R2]
+# above = "D"
+
+# [keys.axes.DPadX]
+# above = "Right"
+# below = "Left"
+
+# [keys.axes.DPadY]
+# above = "Down"
+# below = "Up"
