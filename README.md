@@ -95,9 +95,27 @@ sudo bouton-linux /dev/input/event0 192.168.X.X:8000
 
 ## Configuration
 
-Create a `bouton.toml` file with your button to key mappings. See [default.toml](crates/bouton-windows/default.toml) for the full default configuration.
+When you run `bouton-windows` (or specify a config in `bouton-setup`):
 
-Example configuration:
+1. If no config file is specified, it will look for `bouton.toml` in the current directory
+2. If the file doesn't exist, it will create a default `bouton.toml` for you
+3. Edit the file with your button mappings and run `bouton-windows` again
+
+### Using a custom config file
+
+You can specify a different config file by path:
+
+```powershell
+# Running directly
+bouton-windows myconfig.toml
+bouton-windows C:\path\to\config.toml
+
+# Or when prompted in bouton-setup, enter the config file path
+```
+
+### Example configuration
+
+See [default.toml](crates/bouton-windows/default.toml) for the full default configuration.
 
 ```toml
 [server]
@@ -125,5 +143,3 @@ down = "DOWN"
 left = "LEFT"
 right = "RIGHT"
 ```
-
-When `bouton-windows` runs without a config file, it creates a default `bouton.toml` with all available mappings and comments explaining each section.

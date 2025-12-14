@@ -103,7 +103,7 @@ fn get_wsl_ip() -> String {
 
 fn get_config_path() -> String {
     println!("\nStep 4: Config File");
-    print!("Enter config file path (default bouton.toml): ");
+    print!("Enter config file path (default: bouton.toml): ");
     io::stdout().flush().unwrap();
 
     let mut input = String::new();
@@ -205,23 +205,11 @@ fn get_linux_event_device() -> String {
     input.trim().to_string()
 }
 
-fn launch_windows_server(config_path: &str) {
+fn launch_windows_server(config_name: &str) {
     println!("Launching bouton-windows.exe...\n");
 
-    // Convert to absolute path if relative
-    let config_path = std::path::Path::new(config_path);
-    let config_path = if config_path.is_absolute() {
-        config_path.to_string_lossy().to_string()
-    } else {
-        std::env::current_dir()
-            .unwrap_or_default()
-            .join(config_path)
-            .to_string_lossy()
-            .to_string()
-    };
-
     let status = Command::new("cmd")
-        .args(&["/C", "start", "bouton-windows.exe", &config_path])
+        .args(&["/C", "start", "bouton-windows.exe", config_path])
         .status();
 
     match status {
