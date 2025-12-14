@@ -4,10 +4,10 @@ use bouton_core::{InputEvent, control::GamepadControl, KeyAction};
 use std::net::SocketAddr;
 use std::collections::HashMap;
 use std::sync::Arc;
-use tokio::net::{TcpListener, TcpStream};
+use tokio::net::UdpSocket;
 
 pub struct SocketServer {
-    listener: TcpListener,
+    socket: UdpSocket,
     button_map: Arc<HashMap<u16, u32>>,
     joystick_map: Arc<HashMap<GamepadControl, JoystickCodeConfig>>,
     trigger_map: Arc<HashMap<u16, TriggerCodeConfig>>,
@@ -22,9 +22,9 @@ impl SocketServer {
         trigger_map: HashMap<u16, TriggerCodeConfig>,
         dpad_config: Option<DPadCodeConfig>,
     ) -> std::io::Result<Self> {
-        let listener = TcpListener::bind(addr).await?;
+        let socket = UdpSocket::bind(addr).await?;
         Ok(Self {
-            listener,
+            socket,
             button_map: Arc::new(button_map),
             joystick_map: Arc::new(joystick_map),
             trigger_map: Arc::new(trigger_map),
@@ -33,95 +33,100 @@ impl SocketServer {
     }
 
     pub async fn run(self) -> std::io::Result<()> {
+        let mut buf = [0u8; 4096];
+        let button_map = Arc::new(self.button_map);
+        let joystick_map = Arc::new(self.joystick_map);
+        let trigger_map = Arc::new(self.trigger_map);
+        let dpad_config = Arc::new(self.dpad_config);
+        
+        // Track state across all datagrams
+        let mut joystick_states: HashMap<GamepadControl, (u8, u8)> = HashMap::new();
+        let mut joystick_pressed: HashMap<GamepadControl, (Option<u32>, Option<u32>)> = HashMap::new();
+        let mut trigger_states: HashMap<GamepadControl, bool> = HashMap::new();
+        let mut dpad_state: Option<(u8, u8)> = None;
+        let mut dpad_pressed: Option<u32> = None;
+        
         loop {
-            let (socket, addr) = self.listener.accept().await?;
-            println!("Client connected: {}", addr);
-            let button_map = Arc::clone(&self.button_map);
-            let joystick_map = Arc::clone(&self.joystick_map);
-            let trigger_map = Arc::clone(&self.trigger_map);
-            let dpad_config = Arc::clone(&self.dpad_config);
-            tokio::spawn(handle_connection(
-                socket,
-                button_map,
-                joystick_map,
-                trigger_map,
-                dpad_config,
-            ));
+            match self.socket.recv_from(&mut buf).await {
+                Ok((n, _addr)) => {
+                    if let Ok(event) = bincode::deserialize::<InputEvent>(&buf[..n]) {
+                        handle_event(
+                            event,
+                            &button_map,
+                            &joystick_map,
+                            &trigger_map,
+                            &dpad_config,
+                            &mut joystick_states,
+                            &mut joystick_pressed,
+                            &mut trigger_states,
+                            &mut dpad_state,
+                            &mut dpad_pressed,
+                        )
+                        .await;
+                    }
+                }
+                Err(e) => {
+                    eprintln!("UDP recv error: {}", e);
+                }
+            }
         }
     }
 }
 
-async fn handle_connection(
-    mut socket: TcpStream,
-    button_map: Arc<HashMap<u16, u32>>,
-    joystick_map: Arc<HashMap<GamepadControl, JoystickCodeConfig>>,
-    trigger_map: Arc<HashMap<u16, TriggerCodeConfig>>,
-    dpad_config: Arc<Option<DPadCodeConfig>>,
-) -> std::io::Result<()> {
-    use tokio::io::AsyncBufReadExt;
-    let reader = tokio::io::BufReader::new(&mut socket);
-    let mut lines = reader.lines();
-    
-    // Track axis states for threshold crossings
-    let mut joystick_states: HashMap<GamepadControl, (u8, u8)> = HashMap::new(); // (x, y) values
-    let mut joystick_pressed: HashMap<GamepadControl, (Option<u32>, Option<u32>)> = HashMap::new(); // (x_key, y_key) currently pressed
-    let mut trigger_states: HashMap<GamepadControl, bool> = HashMap::new(); // is_pressed
-    let mut dpad_state: Option<(u8, u8)> = None; // (x, y) values
-    let mut dpad_pressed: Option<u32> = None; // currently pressed dpad key code
-
-    while let Some(line) = lines.next_line().await? {
-        match serde_json::from_str::<InputEvent>(&line) {
-            Ok(event) => {
-                match event {
-                    InputEvent::Button(button_event) => {
-                        if let Some(&key_code) = button_map.get(&button_event.button_code) {
-                            let key_name = code_to_name(key_code);
-                            
-                            if let Err(e) = KeyInjector::inject(key_code, button_event.action) {
-                                eprintln!("✗ Failed to inject key: {}", e);
-                            } else {
-                                println!("✓ {} {}", key_name, if button_event.action == KeyAction::Press { "pressed" } else { "released" });
-                            }
-                        }
-                    }
-                    InputEvent::Axis(axis_event) => {
-                        let control = GamepadControl::from_code(axis_event.axis_code);
-                        
-                        if let Some(control) = control {
-                            match control {
-                                GamepadControl::LeftStickX | GamepadControl::LeftStickY => {
-                                    if let Some(joystick_config) = joystick_map.get(&GamepadControl::LeftStickX) {
-                                        handle_joystick_axis(control, axis_event.value, joystick_config, &mut joystick_states, &mut joystick_pressed).await;
-                                    }
-                                }
-                                GamepadControl::RightStickX | GamepadControl::RightStickY => {
-                                    if let Some(joystick_config) = joystick_map.get(&GamepadControl::RightStickX) {
-                                        handle_joystick_axis(control, axis_event.value, joystick_config, &mut joystick_states, &mut joystick_pressed).await;
-                                    }
-                                }
-                                GamepadControl::L2 | GamepadControl::R2 => {
-                                    if let Some(trigger_config) = trigger_map.get(&axis_event.axis_code) {
-                                        handle_trigger_axis(control, axis_event.value, trigger_config, &mut trigger_states).await;
-                                    }
-                                }
-                                GamepadControl::DPadX | GamepadControl::DPadY => {
-                                    if let Some(dpad) = dpad_config.as_ref() {
-                                        handle_dpad_axis(control, axis_event.value, dpad, &mut dpad_state, &mut dpad_pressed).await;
-                                    }
-                                }
-                                _ => {}
-                            }
-                        }
-                    }
+async fn handle_event(
+    event: InputEvent,
+    button_map: &Arc<HashMap<u16, u32>>,
+    joystick_map: &Arc<HashMap<GamepadControl, JoystickCodeConfig>>,
+    trigger_map: &Arc<HashMap<u16, TriggerCodeConfig>>,
+    dpad_config: &Arc<Option<DPadCodeConfig>>,
+    joystick_states: &mut HashMap<GamepadControl, (u8, u8)>,
+    joystick_pressed: &mut HashMap<GamepadControl, (Option<u32>, Option<u32>)>,
+    trigger_states: &mut HashMap<GamepadControl, bool>,
+    dpad_state: &mut Option<(u8, u8)>,
+    dpad_pressed: &mut Option<u32>,
+) {
+    match event {
+        InputEvent::Button(button_event) => {
+            if let Some(&key_code) = button_map.get(&button_event.button_code) {
+                let key_name = code_to_name(key_code);
+                
+                if let Err(e) = KeyInjector::inject(key_code, button_event.action) {
+                    eprintln!("✗ Failed to inject key: {}", e);
+                } else {
+                    println!("✓ {} {}", key_name, if button_event.action == KeyAction::Press { "pressed" } else { "released" });
                 }
             }
-            Err(e) => {
-                eprintln!("Failed to decode event: {}", e);
+        }
+        InputEvent::Axis(axis_event) => {
+            let control = GamepadControl::from_code(axis_event.axis_code);
+            
+            if let Some(control) = control {
+                match control {
+                    GamepadControl::LeftStickX | GamepadControl::LeftStickY => {
+                        if let Some(joystick_config) = joystick_map.get(&GamepadControl::LeftStickX) {
+                            handle_joystick_axis(control, axis_event.value, joystick_config, joystick_states, joystick_pressed).await;
+                        }
+                    }
+                    GamepadControl::RightStickX | GamepadControl::RightStickY => {
+                        if let Some(joystick_config) = joystick_map.get(&GamepadControl::RightStickX) {
+                            handle_joystick_axis(control, axis_event.value, joystick_config, joystick_states, joystick_pressed).await;
+                        }
+                    }
+                    GamepadControl::L2 | GamepadControl::R2 => {
+                        if let Some(trigger_config) = trigger_map.get(&axis_event.axis_code) {
+                            handle_trigger_axis(control, axis_event.value, trigger_config, trigger_states).await;
+                        }
+                    }
+                    GamepadControl::DPadX | GamepadControl::DPadY => {
+                        if let Some(dpad) = dpad_config.as_ref() {
+                            handle_dpad_axis(control, axis_event.value, dpad, dpad_state, dpad_pressed).await;
+                        }
+                    }
+                    _ => {}
+                }
             }
         }
     }
-
-    Ok(())
 }
 
 async fn handle_joystick_axis(

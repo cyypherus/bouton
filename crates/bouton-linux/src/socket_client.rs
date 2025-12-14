@@ -1,25 +1,23 @@
 use bouton_core::InputEvent;
 use std::net::SocketAddr;
-use tokio::net::TcpStream;
-use tokio::io::AsyncWriteExt;
+use tokio::net::UdpSocket;
 
 pub struct SocketClient {
-    stream: TcpStream,
+    socket: UdpSocket,
+    server_addr: SocketAddr,
 }
 
 impl SocketClient {
-    pub async fn connect(addr: SocketAddr) -> std::io::Result<Self> {
-        let stream = TcpStream::connect(addr).await?;
-        Ok(Self { stream })
+    pub async fn connect(server_addr: SocketAddr) -> std::io::Result<Self> {
+        let socket = UdpSocket::bind("0.0.0.0:0").await?;
+        Ok(Self { socket, server_addr })
     }
 
     pub async fn send_event(&mut self, event: InputEvent) -> std::io::Result<()> {
-        let json = serde_json::to_string(&event)
+        let bytes = bincode::serialize(&event)
             .map_err(|_| std::io::Error::new(std::io::ErrorKind::InvalidData, "encoding failed"))?;
         
-        self.stream.write_all(json.as_bytes()).await?;
-        self.stream.write_all(b"\n").await?;
-        self.stream.flush().await?;
+        self.socket.send_to(&bytes, self.server_addr).await?;
         Ok(())
     }
 }
