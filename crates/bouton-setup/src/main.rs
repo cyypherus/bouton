@@ -205,7 +205,7 @@ fn get_linux_event_device() -> String {
     input.trim().to_string()
 }
 
-fn launch_windows_server(config_name: &str) {
+fn launch_windows_server(config_path: &str) {
     println!("Launching bouton-windows.exe...\n");
 
     let status = Command::new("cmd")

@@ -110,28 +110,23 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             });
         }
 
-        // Read gamepad events
-        match gamepad.fetch_events() {
-            Ok(events) => {
-                state.gamepad_state = ui::ConnectionState::Connected;
-                state.gamepad_error = None;
-                
-                for event in events {
-                    state.update(&event);
+        // Read gamepad events (non-blocking via channel)
+        let events = gamepad.try_recv();
+        if !events.is_empty() {
+            state.gamepad_state = ui::ConnectionState::Connected;
+            state.gamepad_error = None;
+            
+            for event in events {
+                state.update(&event);
 
-                    let mut client_guard = client.lock().await;
-                    if let Some(ref mut c) = client_guard.as_mut() {
-                        if c.send_event(event).await.is_err() {
-                            // Server disconnected
-                            *client_guard = None;
-                            *state_server_status.lock().await = ui::ConnectionState::Error;
-                        }
+                let mut client_guard = client.lock().await;
+                if let Some(ref mut c) = client_guard.as_mut() {
+                    if c.send_event(event).await.is_err() {
+                        // Server disconnected
+                        *client_guard = None;
+                        *state_server_status.lock().await = ui::ConnectionState::Error;
                     }
                 }
-            }
-            Err(e) => {
-                state.gamepad_state = ui::ConnectionState::Error;
-                state.gamepad_error = Some(e.to_string());
             }
         }
 
