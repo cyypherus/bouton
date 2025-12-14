@@ -1,6 +1,6 @@
 # Bouton
 
-Bouton is an accessibility tool that converts gamepad input into keyboard events. It provides an alternative to tools like Joy2Key and AntimicroX, with a key difference: it completely hides HID events from Windows.
+Bouton is an accessibility tool that converts gamepad input into keyboard events - making it *impossible* for applications on windows to intercept HID events from the gamepad. It shares use cases with software like Joy2Key / AntimicroX / HidHide but is geared towards more technical users.
 
 ## Problem
 
