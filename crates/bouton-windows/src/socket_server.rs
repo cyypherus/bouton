@@ -204,6 +204,16 @@ async fn handle_event(
     }
 }
 
+fn compute_adaptive_deadzone(axis_diff: i16, perpendicular_diff: i16, base_deadzone: i16) -> bool {
+    let max_perpendicular = 128i16;
+    // Scale deadzone proportionally to perpendicular axis deviation
+    let ratio = perpendicular_diff as f32 / max_perpendicular as f32;
+    let scaled_deadzone = (base_deadzone as f32 * ratio).ceil() as i16;
+    // Use whichever is larger: base or scaled
+    let effective_deadzone = base_deadzone.max(scaled_deadzone);
+    axis_diff < effective_deadzone
+}
+
 async fn handle_joystick_axis(
     control: GamepadControl,
     value: u8,
@@ -232,12 +242,15 @@ async fn handle_joystick_axis(
 
     states.insert(stick_key, (x, y));
 
-    // Check if we're in deadzone
+    // Compute distances from center with adaptive deadzone
     let center = 127i16;
     let x_diff = (x as i16 - center).abs();
     let y_diff = (y as i16 - center).abs();
-    let x_in_deadzone = x_diff < config.deadzone as i16;
-    let y_in_deadzone = y_diff < config.deadzone as i16;
+    let base_deadzone = config.deadzone as i16;
+
+    // Apply adaptive deadzone: each axis's deadzone scales based on the other axis's deviation
+    let x_in_deadzone = compute_adaptive_deadzone(x_diff, y_diff, base_deadzone);
+    let y_in_deadzone = compute_adaptive_deadzone(y_diff, x_diff, base_deadzone);
 
     let (mut x_key_pressed, mut y_key_pressed) =
         pressed.get(&stick_key).copied().unwrap_or((None, None));
@@ -482,5 +495,114 @@ fn code_to_name(code: u32) -> String {
         0xDD => "]".to_string(),
         0xDE => "'".to_string(),
         _ => format!("Unknown(0x{:02X})", code),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_adaptive_deadzone_at_center() {
+        let base_deadzone = 20i16;
+        let center_diff = 0i16;
+        let perpendicular_diff = 0i16;
+
+        let in_deadzone = compute_adaptive_deadzone(center_diff, perpendicular_diff, base_deadzone);
+        assert!(in_deadzone, "At center (0, 0), should be in deadzone");
+    }
+
+    #[test]
+    fn test_adaptive_deadzone_just_outside_base() {
+        let base_deadzone = 20i16;
+        let axis_diff = 21i16;
+        let perpendicular_diff = 0i16;
+
+        let in_deadzone = compute_adaptive_deadzone(axis_diff, perpendicular_diff, base_deadzone);
+        assert!(!in_deadzone, "At 21 with base deadzone of 20 and perpendicular at center, should be outside deadzone");
+    }
+
+    #[test]
+    fn test_adaptive_deadzone_increases_with_perpendicular() {
+        let base_deadzone = 20i16;
+        let axis_diff = 15i16;  // Between scaled and base deadzone at 50%
+        let perpendicular_diff_small = 32i16;   // 25% of max
+        let perpendicular_diff_large = 128i16;  // 100% of max
+
+        let in_deadzone_small = compute_adaptive_deadzone(axis_diff, perpendicular_diff_small, base_deadzone);
+        let in_deadzone_large = compute_adaptive_deadzone(axis_diff, perpendicular_diff_large, base_deadzone);
+
+        // At 25%, scaled = ceil(20 * 0.25) = 5, effective = max(20, 5) = 20, so 15 is in
+        assert!(in_deadzone_small, "With small perpendicular deflection (32), axis_diff=15 should be in deadzone (base=20)");
+
+        // At 100%, scaled = ceil(20 * 1.0) = 20, effective = max(20, 20) = 20, so 15 is in
+        assert!(in_deadzone_large, "With max perpendicular deflection (128), axis_diff=15 should be in deadzone");
+    }
+
+    #[test]
+    fn test_adaptive_deadzone_x_shape_behavior() {
+        let base_deadzone = 20i16;
+        
+        // Scenario: pushing stick straight forward (Y=255, X=127)
+        // Y is fully extended (diff=128), so X should maintain full deadzone
+        let y_diff = 128i16;  // Fully extended on Y
+        let x_diff_small = 15i16;  // Small X deflection
+        
+        // With y_diff=128, scaled = ceil(20 * 1.0) = 20, effective = max(20, 20) = 20
+        let in_deadzone = compute_adaptive_deadzone(x_diff_small, y_diff, base_deadzone);
+        assert!(in_deadzone, "When pushing forward (Y=128), small X deflection (15) should be in deadzone");
+        
+        // Y axis itself should be outside deadzone
+        let y_in_deadzone = compute_adaptive_deadzone(y_diff, 0i16, base_deadzone);
+        assert!(!y_in_deadzone, "Y axis at 128 with X at center should be outside deadzone");
+    }
+
+    #[test]
+    fn test_adaptive_deadzone_diagonal_movement() {
+        let base_deadzone = 20i16;
+        
+        // Pushing diagonally: both X and Y have moderate deflection
+        let deflection = 64i16;  // Mid-range deflection (50% of max)
+        
+        // With perpendicular at 64, scaled = ceil(20 * 0.5) = 10, effective = max(20, 10) = 20
+        let in_deadzone = compute_adaptive_deadzone(deflection, deflection, base_deadzone);
+        assert!(!in_deadzone, "Diagonal movement with 64 unit deflection should be outside deadzone");
+    }
+
+    #[test]
+    fn test_adaptive_deadzone_half_perpendicular_range() {
+        let base_deadzone = 20i16;
+        
+        // When perpendicular is at half max (64 out of 128)
+        let perpendicular_half = 64i16;
+        // scaled = ceil(20 * 0.5) = 10, effective = max(20, 10) = 20
+        let effective_deadzone = 20i16;
+        
+        // An axis_diff of 19 should be in deadzone
+        let in_deadzone_19 = compute_adaptive_deadzone(19i16, perpendicular_half, base_deadzone);
+        assert!(in_deadzone_19, "With perpendicular at 50%, axis_diff=19 should be in deadzone (effective={})", effective_deadzone);
+        
+        // An axis_diff of 21 should be outside deadzone
+        let in_deadzone_21 = compute_adaptive_deadzone(21i16, perpendicular_half, base_deadzone);
+        assert!(!in_deadzone_21, "With perpendicular at 50%, axis_diff=21 should be outside deadzone (effective={})", effective_deadzone);
+    }
+
+    #[test]
+    fn test_base_deadzone_behavior() {
+        let base_deadzone = 20i16;
+        
+        // When both axes are at center, perpendicular_diff = 0
+        // The base deadzone should apply unscaled
+        println!("Testing base deadzone at center:");
+        println!("  x=0, y=0: {}", compute_adaptive_deadzone(0, 0, base_deadzone));
+        println!("  x=10, y=0: {}", compute_adaptive_deadzone(10, 0, base_deadzone));
+        println!("  x=19, y=0: {}", compute_adaptive_deadzone(19, 0, base_deadzone));
+        println!("  x=20, y=0: {}", compute_adaptive_deadzone(20, 0, base_deadzone));
+        println!("  x=21, y=0: {}", compute_adaptive_deadzone(21, 0, base_deadzone));
+        
+        assert!(compute_adaptive_deadzone(0, 0, base_deadzone), "0 should be in deadzone");
+        assert!(compute_adaptive_deadzone(19, 0, base_deadzone), "19 should be in deadzone");
+        assert!(!compute_adaptive_deadzone(20, 0, base_deadzone), "20 should be outside deadzone");
+        assert!(!compute_adaptive_deadzone(21, 0, base_deadzone), "21 should be outside deadzone");
     }
 }
