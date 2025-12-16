@@ -224,9 +224,8 @@ async fn handle_event(
 
 fn compute_adaptive_deadzone(axis_diff: i16, perpendicular_diff: i16, base_deadzone: i16) -> bool {
     let max_range = 128i16;
-    let max_dynamic_deadzone = 85i16; // 1/3 of 255
+    let max_dynamic_deadzone = 50i16;
 
-    // Dynamic deadzone scales from 0 to 85 based on perpendicular axis movement
     let ratio = perpendicular_diff as f32 / max_range as f32;
     let dynamic_deadzone = (max_dynamic_deadzone as f32 * ratio).ceil() as i16;
 
