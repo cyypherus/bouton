@@ -116,7 +116,10 @@ async fn handle_event(
 
                 match KeyInjector::inject(key_code, button_event.action) {
                     Err(e) => {
-                        let _ = ui_tx.send(UIEvent::Error(format!("Failed to inject {}: {}", key_name, e)));
+                        let _ = ui_tx.send(UIEvent::Error(format!(
+                            "Failed to inject {}: {}",
+                            key_name, e
+                        )));
                     }
                     Ok(_) => {
                         let ui_event = match button_event.action {
@@ -132,7 +135,10 @@ async fn handle_event(
                     KeyAction::Press => "pressed",
                     KeyAction::Release => "released",
                 };
-                let _ = ui_tx.send(UIEvent::Unbound(format!("{} ({})", button_event.control, action_str)));
+                let _ = ui_tx.send(UIEvent::Unbound(format!(
+                    "{} ({})",
+                    button_event.control, action_str
+                )));
             }
         }
         ControlEvent::Axis(axis_event) => {
@@ -151,7 +157,10 @@ async fn handle_event(
                         )
                         .await;
                     } else {
-                        let _ = ui_tx.send(UIEvent::Unbound(format!("{}: {}", control, axis_event.value)));
+                        let _ = ui_tx.send(UIEvent::Unbound(format!(
+                            "{}: {}",
+                            control, axis_event.value
+                        )));
                     }
                 }
                 GamepadControl::RightStickX | GamepadControl::RightStickY => {
@@ -166,7 +175,10 @@ async fn handle_event(
                         )
                         .await;
                     } else {
-                        let _ = ui_tx.send(UIEvent::Unbound(format!("{}: {}", control, axis_event.value)));
+                        let _ = ui_tx.send(UIEvent::Unbound(format!(
+                            "{}: {}",
+                            control, axis_event.value
+                        )));
                     }
                 }
                 GamepadControl::L2 | GamepadControl::R2 => {
@@ -180,7 +192,10 @@ async fn handle_event(
                         )
                         .await;
                     } else {
-                        let _ = ui_tx.send(UIEvent::Unbound(format!("{}: {}", control, axis_event.value)));
+                        let _ = ui_tx.send(UIEvent::Unbound(format!(
+                            "{}: {}",
+                            control, axis_event.value
+                        )));
                     }
                 }
                 GamepadControl::DPadX | GamepadControl::DPadY => {
@@ -195,7 +210,10 @@ async fn handle_event(
                         )
                         .await;
                     } else {
-                        let _ = ui_tx.send(UIEvent::Unbound(format!("{}: {}", control, axis_event.value)));
+                        let _ = ui_tx.send(UIEvent::Unbound(format!(
+                            "{}: {}",
+                            control, axis_event.value
+                        )));
                     }
                 }
                 _ => {}
@@ -205,12 +223,15 @@ async fn handle_event(
 }
 
 fn compute_adaptive_deadzone(axis_diff: i16, perpendicular_diff: i16, base_deadzone: i16) -> bool {
-    let max_perpendicular = 128i16;
-    // Scale deadzone proportionally to perpendicular axis deviation
-    let ratio = perpendicular_diff as f32 / max_perpendicular as f32;
-    let scaled_deadzone = (base_deadzone as f32 * ratio).ceil() as i16;
-    // Use whichever is larger: base or scaled
-    let effective_deadzone = base_deadzone.max(scaled_deadzone);
+    let max_range = 128i16;
+    let max_dynamic_deadzone = 85i16; // 1/3 of 255
+
+    // Dynamic deadzone scales from 0 to 85 based on perpendicular axis movement
+    let ratio = perpendicular_diff as f32 / max_range as f32;
+    let dynamic_deadzone = (max_dynamic_deadzone as f32 * ratio).ceil() as i16;
+
+    // Use whichever is larger: configurable base or dynamic
+    let effective_deadzone = base_deadzone.max(dynamic_deadzone);
     axis_diff < effective_deadzone
 }
 
@@ -269,7 +290,10 @@ async fn handle_joystick_axis(
             let key_name = code_to_name(old_key);
             match KeyInjector::inject(old_key, KeyAction::Release) {
                 Err(e) => {
-                    let _ = ui_tx.send(UIEvent::Error(format!("Failed to release {}: {}", key_name, e)));
+                    let _ = ui_tx.send(UIEvent::Error(format!(
+                        "Failed to release {}: {}",
+                        key_name, e
+                    )));
                 }
                 Ok(_) => {
                     let _ = ui_tx.send(UIEvent::KeyReleased(key_name.clone(), old_key));
@@ -280,7 +304,10 @@ async fn handle_joystick_axis(
             let key_name = code_to_name(new_key);
             match KeyInjector::inject(new_key, KeyAction::Press) {
                 Err(e) => {
-                    let _ = ui_tx.send(UIEvent::Error(format!("Failed to inject {}: {}", key_name, e)));
+                    let _ = ui_tx.send(UIEvent::Error(format!(
+                        "Failed to inject {}: {}",
+                        key_name, e
+                    )));
                 }
                 Ok(_) => {
                     let _ = ui_tx.send(UIEvent::KeyPressed(key_name.clone(), new_key));
@@ -304,7 +331,10 @@ async fn handle_joystick_axis(
             let key_name = code_to_name(old_key);
             match KeyInjector::inject(old_key, KeyAction::Release) {
                 Err(e) => {
-                    let _ = ui_tx.send(UIEvent::Error(format!("Failed to release {}: {}", key_name, e)));
+                    let _ = ui_tx.send(UIEvent::Error(format!(
+                        "Failed to release {}: {}",
+                        key_name, e
+                    )));
                 }
                 Ok(_) => {
                     let _ = ui_tx.send(UIEvent::KeyReleased(key_name.clone(), old_key));
@@ -315,7 +345,10 @@ async fn handle_joystick_axis(
             let key_name = code_to_name(new_key);
             match KeyInjector::inject(new_key, KeyAction::Press) {
                 Err(e) => {
-                    let _ = ui_tx.send(UIEvent::Error(format!("Failed to inject {}: {}", key_name, e)));
+                    let _ = ui_tx.send(UIEvent::Error(format!(
+                        "Failed to inject {}: {}",
+                        key_name, e
+                    )));
                 }
                 Ok(_) => {
                     let _ = ui_tx.send(UIEvent::KeyPressed(key_name.clone(), new_key));
@@ -349,7 +382,10 @@ async fn handle_trigger_axis(
         let key_name = code_to_name(config.key);
         match KeyInjector::inject(config.key, action) {
             Err(e) => {
-                let _ = ui_tx.send(UIEvent::Error(format!("Failed to inject {}: {}", key_name, e)));
+                let _ = ui_tx.send(UIEvent::Error(format!(
+                    "Failed to inject {}: {}",
+                    key_name, e
+                )));
             }
             Ok(_) => {
                 let ui_event = match action {
@@ -410,31 +446,37 @@ async fn handle_dpad_axis(
     };
 
     // Only inject if key state changed
-     if new_key != *pressed {
-         if let Some(old_key) = *pressed {
-             let key_name = code_to_name(old_key);
-             match KeyInjector::inject(old_key, KeyAction::Release) {
-                 Err(e) => {
-                     let _ = ui_tx.send(UIEvent::Error(format!("Failed to release {}: {}", key_name, e)));
-                 }
-                 Ok(_) => {
-                     let _ = ui_tx.send(UIEvent::KeyReleased(key_name.clone(), old_key));
-                 }
-             }
-         }
-         if let Some(new_key_code) = new_key {
-             let key_name = code_to_name(new_key_code);
-             match KeyInjector::inject(new_key_code, KeyAction::Press) {
-                 Err(e) => {
-                     let _ = ui_tx.send(UIEvent::Error(format!("Failed to inject {}: {}", key_name, e)));
-                 }
-                 Ok(_) => {
-                     let _ = ui_tx.send(UIEvent::KeyPressed(key_name.clone(), new_key_code));
-                 }
-             }
-         }
-         *pressed = new_key;
-     }
+    if new_key != *pressed {
+        if let Some(old_key) = *pressed {
+            let key_name = code_to_name(old_key);
+            match KeyInjector::inject(old_key, KeyAction::Release) {
+                Err(e) => {
+                    let _ = ui_tx.send(UIEvent::Error(format!(
+                        "Failed to release {}: {}",
+                        key_name, e
+                    )));
+                }
+                Ok(_) => {
+                    let _ = ui_tx.send(UIEvent::KeyReleased(key_name.clone(), old_key));
+                }
+            }
+        }
+        if let Some(new_key_code) = new_key {
+            let key_name = code_to_name(new_key_code);
+            match KeyInjector::inject(new_key_code, KeyAction::Press) {
+                Err(e) => {
+                    let _ = ui_tx.send(UIEvent::Error(format!(
+                        "Failed to inject {}: {}",
+                        key_name, e
+                    )));
+                }
+                Ok(_) => {
+                    let _ = ui_tx.send(UIEvent::KeyPressed(key_name.clone(), new_key_code));
+                }
+            }
+        }
+        *pressed = new_key;
+    }
 }
 
 fn code_to_name(code: u32) -> String {
@@ -519,90 +561,53 @@ mod tests {
         let perpendicular_diff = 0i16;
 
         let in_deadzone = compute_adaptive_deadzone(axis_diff, perpendicular_diff, base_deadzone);
-        assert!(!in_deadzone, "At 21 with base deadzone of 20 and perpendicular at center, should be outside deadzone");
+        assert!(
+            !in_deadzone,
+            "At 21 with base deadzone of 20 and perpendicular at center, should be outside deadzone"
+        );
     }
 
     #[test]
-    fn test_adaptive_deadzone_increases_with_perpendicular() {
+    fn test_adaptive_deadzone_scales_all_directions() {
         let base_deadzone = 20i16;
-        let axis_diff = 15i16;  // Between scaled and base deadzone at 50%
-        let perpendicular_diff_small = 32i16;   // 25% of max
-        let perpendicular_diff_large = 128i16;  // 100% of max
+        let max_deflection = 128i16; // Maximum perpendicular deflection
 
-        let in_deadzone_small = compute_adaptive_deadzone(axis_diff, perpendicular_diff_small, base_deadzone);
-        let in_deadzone_large = compute_adaptive_deadzone(axis_diff, perpendicular_diff_large, base_deadzone);
+        // Dynamic deadzone at max perpendicular: ceil(85 * (128/128)) = 85
+        // Effective = max(20, 85) = 85
+        // So axis_diff of 84 should be inside (84 < 85)
+        let inside_dynamic = compute_adaptive_deadzone(84, max_deflection, base_deadzone);
+        assert!(inside_dynamic, "84 should be inside dynamic deadzone of 85");
 
-        // At 25%, scaled = ceil(20 * 0.25) = 5, effective = max(20, 5) = 20, so 15 is in
-        assert!(in_deadzone_small, "With small perpendicular deflection (32), axis_diff=15 should be in deadzone (base=20)");
+        // axis_diff of 85 should be outside (85 < 85 is false)
+        let outside_dynamic = compute_adaptive_deadzone(85, max_deflection, base_deadzone);
+        assert!(
+            !outside_dynamic,
+            "85 should be outside dynamic deadzone of 85"
+        );
 
-        // At 100%, scaled = ceil(20 * 1.0) = 20, effective = max(20, 20) = 20, so 15 is in
-        assert!(in_deadzone_large, "With max perpendicular deflection (128), axis_diff=15 should be in deadzone");
+        // Test all four directions: forward, backward, left, right
+        for direction in &["forward", "backward", "left", "right"] {
+            let in_deadzone = compute_adaptive_deadzone(84, max_deflection, base_deadzone);
+            assert!(
+                in_deadzone,
+                "When pushing {}, deflection of 84 should be in dynamic deadzone",
+                direction
+            );
+        }
     }
 
     #[test]
-    fn test_adaptive_deadzone_x_shape_behavior() {
+    fn test_base_deadzone_at_center() {
         let base_deadzone = 20i16;
-        
-        // Scenario: pushing stick straight forward (Y=255, X=127)
-        // Y is fully extended (diff=128), so X should maintain full deadzone
-        let y_diff = 128i16;  // Fully extended on Y
-        let x_diff_small = 15i16;  // Small X deflection
-        
-        // With y_diff=128, scaled = ceil(20 * 1.0) = 20, effective = max(20, 20) = 20
-        let in_deadzone = compute_adaptive_deadzone(x_diff_small, y_diff, base_deadzone);
-        assert!(in_deadzone, "When pushing forward (Y=128), small X deflection (15) should be in deadzone");
-        
-        // Y axis itself should be outside deadzone
-        let y_in_deadzone = compute_adaptive_deadzone(y_diff, 0i16, base_deadzone);
-        assert!(!y_in_deadzone, "Y axis at 128 with X at center should be outside deadzone");
-    }
 
-    #[test]
-    fn test_adaptive_deadzone_diagonal_movement() {
-        let base_deadzone = 20i16;
-        
-        // Pushing diagonally: both X and Y have moderate deflection
-        let deflection = 64i16;  // Mid-range deflection (50% of max)
-        
-        // With perpendicular at 64, scaled = ceil(20 * 0.5) = 10, effective = max(20, 10) = 20
-        let in_deadzone = compute_adaptive_deadzone(deflection, deflection, base_deadzone);
-        assert!(!in_deadzone, "Diagonal movement with 64 unit deflection should be outside deadzone");
-    }
-
-    #[test]
-    fn test_adaptive_deadzone_half_perpendicular_range() {
-        let base_deadzone = 20i16;
-        
-        // When perpendicular is at half max (64 out of 128)
-        let perpendicular_half = 64i16;
-        // scaled = ceil(20 * 0.5) = 10, effective = max(20, 10) = 20
-        let effective_deadzone = 20i16;
-        
-        // An axis_diff of 19 should be in deadzone
-        let in_deadzone_19 = compute_adaptive_deadzone(19i16, perpendicular_half, base_deadzone);
-        assert!(in_deadzone_19, "With perpendicular at 50%, axis_diff=19 should be in deadzone (effective={})", effective_deadzone);
-        
-        // An axis_diff of 21 should be outside deadzone
-        let in_deadzone_21 = compute_adaptive_deadzone(21i16, perpendicular_half, base_deadzone);
-        assert!(!in_deadzone_21, "With perpendicular at 50%, axis_diff=21 should be outside deadzone (effective={})", effective_deadzone);
-    }
-
-    #[test]
-    fn test_base_deadzone_behavior() {
-        let base_deadzone = 20i16;
-        
-        // When both axes are at center, perpendicular_diff = 0
-        // The base deadzone should apply unscaled
-        println!("Testing base deadzone at center:");
-        println!("  x=0, y=0: {}", compute_adaptive_deadzone(0, 0, base_deadzone));
-        println!("  x=10, y=0: {}", compute_adaptive_deadzone(10, 0, base_deadzone));
-        println!("  x=19, y=0: {}", compute_adaptive_deadzone(19, 0, base_deadzone));
-        println!("  x=20, y=0: {}", compute_adaptive_deadzone(20, 0, base_deadzone));
-        println!("  x=21, y=0: {}", compute_adaptive_deadzone(21, 0, base_deadzone));
-        
-        assert!(compute_adaptive_deadzone(0, 0, base_deadzone), "0 should be in deadzone");
-        assert!(compute_adaptive_deadzone(19, 0, base_deadzone), "19 should be in deadzone");
-        assert!(!compute_adaptive_deadzone(20, 0, base_deadzone), "20 should be outside deadzone");
-        assert!(!compute_adaptive_deadzone(21, 0, base_deadzone), "21 should be outside deadzone");
+        // At center, dynamic deadzone = 0, so effective = max(20, 0) = 20
+        assert!(
+            compute_adaptive_deadzone(19, 0, base_deadzone),
+            "19 should be in deadzone"
+        );
+        assert!(
+            !compute_adaptive_deadzone(20, 0, base_deadzone),
+            "20 should be outside deadzone"
+        );
     }
 }
