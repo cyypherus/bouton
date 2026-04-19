@@ -1,9 +1,13 @@
 pub fn launch_wsl_client(device: &str, server: &str, sudo: bool) -> Result<(), String> {
     let device_q = sh_quote(device);
     let server_q = sh_quote(server);
-    let prefix = if sudo { "sudo " } else { "" };
+    let invocation = if sudo {
+        format!("sudo \"$(command -v bouton-linux)\" --run {device_q} {server_q}")
+    } else {
+        format!("bouton-linux --run {device_q} {server_q}")
+    };
     let script = format!(
-        "{prefix}bouton-linux --run {device_q} {server_q}; \
+        "{invocation}; \
          echo; \
          echo \"[bouton-linux exited: $?] press Enter to close\"; \
          read"
