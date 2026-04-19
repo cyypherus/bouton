@@ -33,7 +33,7 @@ fn wsl_cmd(as_root: bool, args: &[&str]) -> Command {
         cmd.args(["-u", "root"]);
     }
     cmd.arg("--");
-    cmd.arg("bouton-linux");
+    cmd.args(["bash", "-lc", "exec \"$@\"", "bash", "bouton-linux"]);
     cmd.args(args);
     cmd.stdout(Stdio::piped())
         .stderr(Stdio::piped())
