@@ -319,6 +319,17 @@ pub const BUTTON_CONTROLS: &[GamepadControl] = &[
     GamepadControl::Aux2,
 ];
 
+fn is_firewall_error(err: &str) -> bool {
+    let lower = err.to_ascii_lowercase();
+    lower.contains("only one usage of each socket address")
+        || lower.contains("permission denied")
+        || lower.contains("access is denied")
+        || lower.contains("access denied")
+        || lower.contains("forbidden")
+        || lower.contains("(os error 10013)")
+        || lower.contains("(os error 10048)")
+}
+
 fn on_server_event(state: &mut State, ev: ServerEvent) {
     match ev {
         ServerEvent::Listening(addr) => {
@@ -328,8 +339,13 @@ fn on_server_event(state: &mut State, ev: ServerEvent) {
         }
         ServerEvent::BindFailed(err) => {
             state.status = ServerStatus::Failed;
-            state.status_detail = err.clone();
-            state.push_log(LogEntry::Error(format!("bind failed: {err}")));
+            let hint = if is_firewall_error(&err) {
+                " (Windows Firewall may be blocking — click Allow if prompted; retrying…)"
+            } else {
+                " (retrying…)"
+            };
+            state.status_detail = format!("{err}{hint}");
+            state.push_log(LogEntry::Error(format!("bind failed: {err}{hint}")));
         }
         ServerEvent::ClientConnected(addr) => {
             state.client = Some(addr);

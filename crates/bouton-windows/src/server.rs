@@ -35,7 +35,7 @@ pub async fn run<E>(
 ) where
     E: Fn(ServerEvent) + Send + Sync + 'static,
 {
-    loop {
+    'outer: loop {
         let (addr, port) = {
             let m = mappings.lock().unwrap();
             (m.listen_addr.clone(), m.listen_port)
@@ -51,14 +51,26 @@ pub async fn run<E>(
             }
         };
 
-        let socket = match UdpSocket::bind(bind_addr).await {
-            Ok(s) => s,
-            Err(e) => {
-                on_event(ServerEvent::BindFailed(e.to_string()));
-                if rebind.changed().await.is_err() {
-                    return;
+        let socket = {
+            let mut last_err: Option<String> = None;
+            loop {
+                match UdpSocket::bind(bind_addr).await {
+                    Ok(s) => break s,
+                    Err(e) => {
+                        let msg = e.to_string();
+                        if last_err.as_deref() != Some(msg.as_str()) {
+                            on_event(ServerEvent::BindFailed(msg.clone()));
+                            last_err = Some(msg);
+                        }
+                        tokio::select! {
+                            _ = tokio::time::sleep(std::time::Duration::from_secs(2)) => {}
+                            changed = rebind.changed() => {
+                                if changed.is_err() { return; }
+                                continue 'outer;
+                            }
+                        }
+                    }
                 }
-                continue;
             }
         };
 

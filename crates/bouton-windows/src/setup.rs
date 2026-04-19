@@ -1,5 +1,16 @@
 use std::process::Command;
 
+pub fn ensure_wsl_running() -> Result<(), String> {
+    let output = Command::new("wsl")
+        .args(["--", "true"])
+        .output()
+        .map_err(|e| format!("wsl: {e}"))?;
+    if output.status.success() {
+        return Ok(());
+    }
+    Err(String::from_utf8_lossy(&output.stderr).into_owned())
+}
+
 #[derive(Debug, Clone)]
 pub struct UsbDevice {
     pub busid: String,
@@ -67,6 +78,7 @@ pub fn bind(busid: &str) -> Result<(), String> {
 }
 
 pub fn attach(busid: &str) -> Result<(), String> {
+    ensure_wsl_running().map_err(|e| format!("WSL could not start: {e}"))?;
     let output = Command::new("usbipd")
         .args(["attach", "--wsl", &format!("--busid={busid}")])
         .output()
