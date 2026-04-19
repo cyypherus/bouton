@@ -27,21 +27,41 @@ pub enum DaemonEvent {
 
 type Callback = Arc<dyn Fn(DaemonEvent) + Send + Sync + 'static>;
 
+fn sh_quote(s: &str) -> String {
+    let mut out = String::with_capacity(s.len() + 2);
+    out.push('\'');
+    for ch in s.chars() {
+        if ch == '\'' {
+            out.push_str("'\\''");
+        } else {
+            out.push(ch);
+        }
+    }
+    out.push('\'');
+    out
+}
+
 fn wsl_cmd(as_root: bool, args: &[&str]) -> Command {
-    let script = "h=$(getent passwd \"$(id -un)\" | cut -d: -f6); \
+    let mut quoted_args = String::new();
+    for a in args {
+        quoted_args.push(' ');
+        quoted_args.push_str(&sh_quote(a));
+    }
+    let script = format!(
+        "h=$(getent passwd \"$(id -un)\" | cut -d: -f6); \
          for p in \"$h/.cargo/bin/bouton-linux\" /usr/local/bin/bouton-linux /usr/bin/bouton-linux; do \
-           [ -x \"$p\" ] && exec \"$p\" \"$@\"; \
+           [ -x \"$p\" ] && exec \"$p\"{quoted_args}; \
          done; \
-         command -v bouton-linux >/dev/null && exec bouton-linux \"$@\"; \
-         echo \"bouton-linux not found (looked in $h/.cargo/bin, /usr/local/bin, /usr/bin, and PATH=$PATH)\" >&2; \
-         exit 127";
+         if command -v bouton-linux >/dev/null; then exec bouton-linux{quoted_args}; fi; \
+         echo \"bouton-linux not found (looked in $h/.cargo/bin, /usr/local/bin, /usr/bin, PATH=$PATH)\" >&2; \
+         exit 127"
+    );
     let mut cmd = Command::new("wsl");
     if as_root {
         cmd.args(["-u", "root"]);
     }
     cmd.arg("--");
-    cmd.args(["bash", "-c", script, "bash"]);
-    cmd.args(args);
+    cmd.args(["bash", "-c", &script]);
     cmd.stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .stdin(Stdio::null());
