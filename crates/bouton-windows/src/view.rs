@@ -867,6 +867,36 @@ fn gamepad_panel<'a>(s: &'a State, app: &mut AppState) -> Layout<'a, View<State>
     .width(160.);
     let control_row = row_spaced(8., vec![device_label, device_field, launch_btn]).height(30.);
 
+    let sudo_label = text(id!(str_hash("sudo_lbl", 73)), "Run with sudo")
+        .fill(FG_DIM)
+        .font_size(LABEL_SIZE)
+        .build(app.ctx());
+    let sudo_tog = toggle(
+        id!(),
+        (
+            s.sudo_toggle,
+            Binding::new(|s: &State| s.sudo_toggle, |s, v| s.sudo_toggle = v),
+        ),
+    )
+    .track(|ts, _, ctx| {
+        rect(id!())
+            .fill(if ts.on { ACCENT } else { PANEL_HI })
+            .stroke(BORDER, Stroke::new(1.))
+            .corner_rounding(9.)
+            .build(ctx)
+    })
+    .knob(|_, _, ctx| {
+        circle(id!()).fill(FG).finish(ctx)
+    })
+    .on_toggle(|s, app, on| {
+        s.mappings.sudo = on;
+        s.persist(app);
+    })
+    .build(app.ctx())
+    .width(34.)
+    .height(18.);
+    let sudo_row = row_spaced(8., vec![sudo_tog, sudo_label]).height(20.);
+
     let hint: Option<Layout<'a, View<State>, AppCtx>> = if s.launch_error.is_empty() {
         None
     } else {
@@ -894,7 +924,7 @@ fn gamepad_panel<'a>(s: &'a State, app: &mut AppState) -> Layout<'a, View<State>
         .font_size(14)
         .build(app.ctx());
 
-    let mut children = vec![title, control_row];
+    let mut children = vec![title, control_row, sudo_row];
     if let Some(h) = hint {
         children.push(h);
     }

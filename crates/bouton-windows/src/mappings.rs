@@ -43,6 +43,8 @@ pub struct Mappings {
     pub dpad: Option<DPadMapping>,
     pub last_busid: Option<String>,
     pub last_device: Option<String>,
+    #[serde(default)]
+    pub sudo: bool,
 }
 
 impl Default for Mappings {
@@ -111,6 +113,7 @@ impl Default for Mappings {
             }),
             last_busid: None,
             last_device: None,
+            sudo: false,
         }
     }
 }

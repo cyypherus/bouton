@@ -94,6 +94,7 @@ pub struct State {
 
     pub gp_device_field: TextState,
     pub launch_wsl_btn: ButtonState,
+    pub sudo_toggle: ToggleState,
     pub launch_error: String,
     pub last_key: Option<(String, Instant)>,
 }
@@ -129,6 +130,11 @@ impl State {
 
             gp_device_field: TextState::new(last_device),
             launch_wsl_btn: ButtonState::default(),
+            sudo_toggle: if mappings.sudo {
+                ToggleState::on()
+            } else {
+                ToggleState::off()
+            },
             launch_error: String::new(),
             last_key: None,
 
@@ -354,10 +360,12 @@ pub fn launch_wsl_client(state: &mut State, app: &mut AppState) {
         "{}:{}",
         state.mappings.listen_addr, state.mappings.listen_port
     );
+    let sudo = state.mappings.sudo;
     let dev_for_log = device.clone();
     let server_for_log = server.clone();
     state.push_log(LogEntry::Info(format!(
-        "launching WSL client: bouton-linux --run {dev_for_log} {server_for_log}"
+        "launching WSL client: {}bouton-linux --run {dev_for_log} {server_for_log}",
+        if sudo { "sudo " } else { "" }
     )));
     let cb = app.callback(|s: &mut State, res: Result<(), String>| match res {
         Ok(()) => s.launch_error.clear(),
@@ -367,9 +375,11 @@ pub fn launch_wsl_client(state: &mut State, app: &mut AppState) {
         }
     });
     app.spawn(async move {
-        let res = tokio::task::spawn_blocking(move || launch::launch_wsl_client(&device, &server))
-            .await
-            .unwrap_or_else(|e| Err(format!("task panic: {e}")));
+        let res = tokio::task::spawn_blocking(move || {
+            launch::launch_wsl_client(&device, &server, sudo)
+        })
+        .await
+        .unwrap_or_else(|e| Err(format!("task panic: {e}")));
         cb.send(res);
     });
     state.persist(app);
@@ -397,6 +407,11 @@ fn main() {
             state.device_dd.selected = state.mappings.last_busid.clone().unwrap_or_default();
             state.gp_device_field =
                 TextState::new(state.mappings.last_device.clone().unwrap_or_default());
+            state.sudo_toggle = if state.mappings.sudo {
+                ToggleState::on()
+            } else {
+                ToggleState::off()
+            };
             state.sync_sliders_from_mappings();
             if let Ok(mut guard) = state.mappings_shared.lock() {
                 *guard = state.mappings.clone();
