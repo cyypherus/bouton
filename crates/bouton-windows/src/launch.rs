@@ -15,7 +15,19 @@ pub fn launch_wsl_client(device: &str, server: &str, sudo: bool) -> Result<(), S
         "host={host_q}; \
          port={port_q}; \
          if [ -z \"$host\" ] || [ \"$host\" = '0.0.0.0' ]; then \
-           host=\"$(ip route show default 2>/dev/null | awk '{{print $3; exit}}')\"; \
+           detected=\"$(ip route show default 2>/dev/null | awk '{{print $3; exit}}')\"; \
+           if [ -z \"$detected\" ]; then \
+             detected=\"$(cat /etc/resolv.conf 2>/dev/null | awk '/^nameserver/ {{print $2; exit}}')\"; \
+           fi; \
+           if [ -z \"$detected\" ]; then \
+             echo \"could not auto-detect Windows host IP from WSL.\" >&2; \
+             echo \"set a real IP in the Server Address field (not 0.0.0.0).\" >&2; \
+             echo; \
+             echo \"press Enter to close\"; \
+             read; \
+             exit 1; \
+           fi; \
+           host=\"$detected\"; \
            echo \"[auto-detected Windows host: $host]\"; \
          fi; \
          {bin} --run {device_q} \"$host:$port\"; \
