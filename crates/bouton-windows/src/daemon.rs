@@ -41,23 +41,80 @@ fn wsl_cmd(as_root: bool, args: &[&str]) -> Command {
     cmd
 }
 
-pub async fn list_devices(as_root: bool) -> Vec<(String, String)> {
+#[derive(Debug, Clone)]
+pub enum ListError {
+    WslMissing(String),
+    BoutonLinuxMissing,
+    Failed { code: Option<i32>, stderr: String },
+}
+
+pub struct ListResult {
+    pub devices: Vec<(String, String)>,
+    pub error: Option<ListError>,
+}
+
+pub async fn list_devices(as_root: bool) -> ListResult {
     let mut cmd = wsl_cmd(as_root, &["--list"]);
-    let Ok(mut child) = cmd.spawn() else {
-        return Vec::new();
+    let mut child = match cmd.spawn() {
+        Ok(c) => c,
+        Err(e) => {
+            return ListResult {
+                devices: Vec::new(),
+                error: Some(ListError::WslMissing(e.to_string())),
+            };
+        }
     };
-    let Some(stdout) = child.stdout.take() else {
-        return Vec::new();
-    };
-    let mut lines = BufReader::new(stdout).lines();
+    let stdout = child.stdout.take();
+    let stderr = child.stderr.take();
+
     let mut out = Vec::new();
-    while let Ok(Some(line)) = lines.next_line().await {
-        if let Ok(DaemonMsg::Device { path, name }) = serde_json::from_str(&line) {
-            out.push((path, name));
+    if let Some(s) = stdout {
+        let mut lines = BufReader::new(s).lines();
+        while let Ok(Some(line)) = lines.next_line().await {
+            if let Ok(DaemonMsg::Device { path, name }) = serde_json::from_str(&line) {
+                out.push((path, name));
+            }
         }
     }
-    let _ = child.wait().await;
-    out
+
+    let mut err_text = String::new();
+    if let Some(s) = stderr {
+        let mut lines = BufReader::new(s).lines();
+        while let Ok(Some(line)) = lines.next_line().await {
+            if !err_text.is_empty() {
+                err_text.push('\n');
+            }
+            err_text.push_str(&line);
+        }
+    }
+
+    let status = child.wait().await.ok();
+    let code = status.as_ref().and_then(|s| s.code());
+    let success = status.as_ref().is_some_and(|s| s.success());
+
+    let error = if success {
+        None
+    } else if looks_like_missing_binary(&err_text) {
+        Some(ListError::BoutonLinuxMissing)
+    } else {
+        Some(ListError::Failed {
+            code,
+            stderr: err_text,
+        })
+    };
+
+    ListResult {
+        devices: out,
+        error,
+    }
+}
+
+fn looks_like_missing_binary(stderr: &str) -> bool {
+    let lower = stderr.to_ascii_lowercase();
+    lower.contains("command not found")
+        || lower.contains("bouton-linux: not found")
+        || lower.contains("no such file or directory")
+        || lower.contains("not recognized")
 }
 
 pub struct DaemonHandle {

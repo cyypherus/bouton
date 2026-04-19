@@ -897,6 +897,17 @@ fn gamepad_panel<'a>(s: &'a State, app: &mut AppState) -> Layout<'a, View<State>
     .width(60.);
     let control_row = row_spaced(6., vec![gp_dd, gp_refresh, start, stop]).height(30.);
 
+    let hint: Option<Layout<'a, View<State>, AppCtx>> = if s.gp_list_error.is_empty() {
+        None
+    } else {
+        Some(
+            text(id!(), s.gp_list_error.as_str())
+                .fill(YELLOW)
+                .font_size(11)
+                .build(app.ctx()),
+        )
+    };
+
     let buttons_grid: Vec<Layout<'a, View<State>, AppCtx>> = BUTTON_CONTROLS
         .chunks(5)
         .map(|chunk| {
@@ -908,18 +919,14 @@ fn gamepad_panel<'a>(s: &'a State, app: &mut AppState) -> Layout<'a, View<State>
     let axes_rows: Vec<Layout<'a, View<State>, AppCtx>> =
         AXES.iter().map(|c| axis_row(s, app, *c)).collect();
 
-    panel(
-        bg,
-        column_spaced(
-            8.,
-            vec![
-                title,
-                control_row,
-                column_spaced(4., buttons_grid),
-                column_spaced(3., axes_rows).expand(),
-            ],
-        ),
-    )
+    let mut children = vec![title, control_row];
+    if let Some(h) = hint {
+        children.push(h);
+    }
+    children.push(column_spaced(4., buttons_grid));
+    children.push(column_spaced(3., axes_rows).expand());
+
+    panel(bg, column_spaced(8., children))
 }
 
 fn gp_device_dropdown<'a>(s: &'a State, app: &mut AppState) -> Layout<'a, View<State>, AppCtx> {

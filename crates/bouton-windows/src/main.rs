@@ -104,6 +104,7 @@ pub struct State {
     pub stop_btn: ButtonState,
     pub gp_status: GpStatus,
     pub gp_detail: String,
+    pub gp_list_error: String,
     pub daemon: Option<DaemonHandle>,
     pub as_root: bool,
     pub pending_retry_as_root: bool,
@@ -151,6 +152,7 @@ impl State {
             stop_btn: ButtonState::default(),
             gp_status: GpStatus::Idle,
             gp_detail: String::new(),
+            gp_list_error: String::new(),
             daemon: None,
             as_root: false,
             pending_retry_as_root: false,
@@ -424,7 +426,12 @@ pub fn start_daemon(state: &mut State, app: &mut AppState) {
     }
     let device = state.gp_device_dd.selected.clone();
     if device.is_empty() {
-        state.push_log(LogEntry::Warn("no gamepad device selected".into()));
+        let msg = if state.gp_list_error.is_empty() {
+            "No gamepad device selected. Click Refresh to scan WSL.".to_string()
+        } else {
+            state.gp_list_error.clone()
+        };
+        state.push_log(LogEntry::Warn(msg));
         return;
     }
     let server = format!("{}:{}", state.mappings.listen_addr, state.mappings.listen_port);
@@ -526,16 +533,40 @@ fn main() {
 }
 
 pub fn refresh_gp_devices(app: &mut AppState) {
-    let cb = app.callback(|s: &mut State, devs: Vec<(String, String)>| {
-        s.gp_devices = devs;
+    let cb = app.callback(|s: &mut State, res: daemon::ListResult| {
+        s.gp_devices = res.devices;
         if s.gp_device_dd.selected.is_empty()
             && let Some((first, _)) = s.gp_devices.first()
         {
             s.gp_device_dd.selected = first.clone();
         }
+        match res.error {
+            None => {
+                s.gp_list_error.clear();
+                if s.gp_devices.is_empty() {
+                    s.gp_list_error =
+                        "No input devices in WSL. Attach the gamepad with usbipd first.".into();
+                }
+            }
+            Some(daemon::ListError::WslMissing(msg)) => {
+                s.gp_list_error = format!("Can't reach WSL: {msg}");
+                s.push_log(LogEntry::Error(s.gp_list_error.clone()));
+            }
+            Some(daemon::ListError::BoutonLinuxMissing) => {
+                s.gp_list_error =
+                    "bouton-linux is not installed in WSL. Run `cargo install --path crates/bouton-linux` inside WSL."
+                        .into();
+                s.push_log(LogEntry::Error(s.gp_list_error.clone()));
+            }
+            Some(daemon::ListError::Failed { code, stderr }) => {
+                let suffix = code.map(|c| format!(" (exit {c})")).unwrap_or_default();
+                s.gp_list_error = format!("bouton-linux --list failed{suffix}: {stderr}");
+                s.push_log(LogEntry::Error(s.gp_list_error.clone()));
+            }
+        }
     });
     app.spawn(async move {
-        let devs = daemon::list_devices(false).await;
-        cb.send(devs);
+        let res = daemon::list_devices(false).await;
+        cb.send(res);
     });
 }
