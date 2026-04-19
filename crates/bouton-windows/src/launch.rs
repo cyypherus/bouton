@@ -1,41 +1,50 @@
 pub fn launch_wsl_client(device: &str, server: &str, sudo: bool) -> Result<(), String> {
-    let (host, port) = match server.rsplit_once(':') {
+    let (raw_host, port) = match server.rsplit_once(':') {
         Some((h, p)) => (h, p),
         None => return Err(format!("invalid server address: {server}")),
     };
-    let host_q = sh_quote(host);
-    let port_q = sh_quote(port);
+    let host = if raw_host.is_empty() || raw_host == "0.0.0.0" {
+        detect_windows_host()?
+    } else {
+        raw_host.to_string()
+    };
+    let host_port = format!("{host}:{port}");
     let device_q = sh_quote(device);
+    let server_q = sh_quote(&host_port);
     let bin = if sudo {
         "sudo \"$(command -v bouton-linux)\""
     } else {
         "bouton-linux"
     };
     let script = format!(
-        "host={host_q}; \
-         port={port_q}; \
-         if [ -z \"$host\" ] || [ \"$host\" = '0.0.0.0' ]; then \
-           detected=\"$(ip route show default 2>/dev/null | awk '{{print $3; exit}}')\"; \
-           if [ -z \"$detected\" ]; then \
-             detected=\"$(awk '/^nameserver/ {{ip=$2}} END{{print ip}}' /etc/resolv.conf 2>/dev/null)\"; \
-             case \"$detected\" in 127.*) detected=\"\" ;; esac; \
-           fi; \
-           if [ -z \"$detected\" ]; then \
-             detected=\"$(cat /mnt/c/Windows/System32/drivers/etc/hosts 2>/dev/null | awk '/host.docker.internal|windows.host/ {{print $1; exit}}')\"; \
-           fi; \
-           if [ -z \"$detected\" ]; then \
-             detected='127.0.0.1'; \
-             echo \"[falling back to 127.0.0.1 — assuming WSL mirrored networking]\"; \
-           fi; \
-           host=\"$detected\"; \
-           echo \"[Windows host: $host]\"; \
-         fi; \
-         {bin} --run {device_q} \"$host:$port\"; \
+        "echo \"[Windows host: {host}]\"; \
+         {bin} --run {device_q} {server_q}; \
          echo; \
          echo \"[bouton-linux exited: $?] press Enter to close\"; \
          read"
     );
     spawn_console(&script)
+}
+
+#[cfg(target_os = "windows")]
+fn detect_windows_host() -> Result<String, String> {
+    use std::process::Command;
+    let out = Command::new("wsl.exe")
+        .args(["--", "sh", "-c", "ip route show | grep default"])
+        .output()
+        .map_err(|e| format!("wsl detect: {e}"))?;
+    let line = String::from_utf8_lossy(&out.stdout);
+    let ip = line.split_whitespace().nth(2).unwrap_or("").to_string();
+    if ip.is_empty() {
+        Err("could not detect Windows host IP from WSL. Set a real IP in the Server Address field.".into())
+    } else {
+        Ok(ip)
+    }
+}
+
+#[cfg(not(target_os = "windows"))]
+fn detect_windows_host() -> Result<String, String> {
+    Err("WSL host detection is only supported on Windows".into())
 }
 
 #[cfg(target_os = "windows")]
