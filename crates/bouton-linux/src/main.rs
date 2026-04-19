@@ -1,145 +1,137 @@
-mod gamepad;
-mod socket_client;
-mod ui;
-
-
-use crossterm::{
-    event::{self, Event, KeyCode},
-    execute,
-    terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
-};
-use gamepad::GamepadReader;
-use ratatui::backend::CrosstermBackend;
-use ratatui::Terminal;
-use socket_client::SocketClient;
+use bouton_core::{ControlEvent, KeyAction, control::GamepadControl};
+use serde::Serialize;
+use std::io::{BufWriter, Write};
 use std::net::SocketAddr;
-use std::sync::Arc;
-use std::time::{Duration, Instant};
-use tokio::sync::Mutex;
-use ui::GamepadState;
+use std::path::Path;
+use tokio::net::UdpSocket;
 
-#[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
+#[derive(Serialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+enum Event<'a> {
+    Device { path: &'a str, name: &'a str },
+    Opened,
+    PermissionDenied,
+    OpenError { msg: String },
+    SendError { msg: String },
+    Button { control: GamepadControl, pressed: bool },
+    Axis { control: GamepadControl, value: i32 },
+}
+
+fn emit(ev: Event<'_>) {
+    let mut out = BufWriter::new(std::io::stdout().lock());
+    let _ = serde_json::to_writer(&mut out, &ev);
+    let _ = out.write_all(b"\n");
+    let _ = out.flush();
+}
+
+fn main() {
     let args: Vec<String> = std::env::args().collect();
-    
-    if args.len() < 2 {
-        eprintln!("Usage: {} <gamepad_device> [server_addr]", args[0]);
-        eprintln!("Example: {} /dev/input/event0 127.0.0.1:8000", args[0]);
-        std::process::exit(1);
+    match args.get(1).map(|s| s.as_str()) {
+        Some("--list") => list_devices(),
+        Some("--run") => {
+            let device = args.get(2).cloned().unwrap_or_default();
+            let server = args.get(3).cloned().unwrap_or_default();
+            run(device, server);
+        }
+        _ => {
+            eprintln!("usage: bouton-linux --list");
+            eprintln!("       bouton-linux --run <device> <host:port>");
+            std::process::exit(2);
+        }
     }
+}
 
-    let gamepad_path = &args[1];
-    let server_addr: SocketAddr = if args.len() > 2 {
-        args[2].parse()?
-    } else {
-        "127.0.0.1:8000".parse()?
+fn list_devices() {
+    let Ok(entries) = std::fs::read_dir("/dev/input") else {
+        return;
     };
+    let mut devs: Vec<_> = entries
+        .flatten()
+        .filter_map(|e| {
+            let p = e.path();
+            let fname = p.file_name()?.to_str()?;
+            if !fname.starts_with("event") {
+                return None;
+            }
+            let name = evdev::Device::open(&p)
+                .ok()
+                .and_then(|d| d.name().map(|s| s.to_string()))
+                .unwrap_or_else(|| fname.to_string());
+            Some((p.display().to_string(), name))
+        })
+        .collect();
+    devs.sort();
+    for (path, name) in &devs {
+        emit(Event::Device { path, name });
+    }
+}
 
-    let mut gamepad = match GamepadReader::open(gamepad_path) {
-        Ok(g) => g,
+fn run(device: String, server: String) {
+    let addr: SocketAddr = match server.parse() {
+        Ok(a) => a,
         Err(e) => {
-            eprintln!("Error opening gamepad at {}: {}", gamepad_path, e);
-            eprintln!();
-            eprintln!("Make sure the gamepad device exists. You can find it with:");
-            eprintln!("  ls /dev/input/event*");
+            emit(Event::OpenError {
+                msg: format!("bad server addr {server}: {e}"),
+            });
             std::process::exit(1);
         }
     };
 
-    // Setup terminal first
-    enable_raw_mode()?;
-    let mut stdout = std::io::stdout();
-    execute!(stdout, EnterAlternateScreen)?;
-    let backend = CrosstermBackend::new(stdout);
-    let mut terminal = Terminal::new(backend)?;
+    let mut evdev_device = match evdev::Device::open(Path::new(&device)) {
+        Ok(d) => d,
+        Err(e) if e.kind() == std::io::ErrorKind::PermissionDenied => {
+            emit(Event::PermissionDenied);
+            std::process::exit(2);
+        }
+        Err(e) => {
+            emit(Event::OpenError { msg: e.to_string() });
+            std::process::exit(1);
+        }
+    };
+    emit(Event::Opened);
 
-    let mut state = GamepadState::new(server_addr.to_string());
-
-    // Spawn background task to connect to server
-    let client = Arc::new(Mutex::new(None));
-    let client_clone = Arc::clone(&client);
-    let state_server_status = Arc::new(Mutex::new(ui::ConnectionState::Connecting));
-    let state_server_status_clone = Arc::clone(&state_server_status);
-    
-    tokio::spawn(async move {
-        match SocketClient::connect(server_addr).await {
-            Ok(socket_client) => {
-                *client_clone.lock().await = Some(socket_client);
-                *state_server_status_clone.lock().await = ui::ConnectionState::Connected;
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+    rt.block_on(async move {
+        let socket = match UdpSocket::bind("0.0.0.0:0").await {
+            Ok(s) => s,
+            Err(e) => {
+                emit(Event::OpenError { msg: format!("bind: {e}") });
+                return;
             }
-            Err(_) => {
-                *state_server_status_clone.lock().await = ui::ConnectionState::Error;
+        };
+
+        loop {
+            let events = match evdev_device.fetch_events() {
+                Ok(e) => e,
+                Err(e) => {
+                    emit(Event::OpenError { msg: e.to_string() });
+                    return;
+                }
+            };
+            for ev in events {
+                let Some(ge) = bouton_core::GamepadEvent::from_evdev(ev) else {
+                    continue;
+                };
+                let Some(ce) = ge.to_control() else { continue };
+                match &ce {
+                    ControlEvent::Button(b) => emit(Event::Button {
+                        control: b.control,
+                        pressed: matches!(b.action, KeyAction::Press),
+                    }),
+                    ControlEvent::Axis(a) => emit(Event::Axis {
+                        control: a.control,
+                        value: a.value,
+                    }),
+                }
+                if let Ok(bytes) = bincode::serialize(&ce)
+                    && let Err(e) = socket.send_to(&bytes, addr).await
+                {
+                    emit(Event::SendError { msg: e.to_string() });
+                }
             }
         }
     });
-
-    let mut last_server_retry = Instant::now();
-
-    // Main loop
-    loop {
-        // Handle input events
-        if event::poll(std::time::Duration::from_millis(100))? {
-            if let Event::Key(key) = event::read()? {
-                if key.code == KeyCode::Char('q') || key.code == KeyCode::Esc {
-                    break;
-                }
-            }
-        }
-
-        // Update server connection status from background task
-        state.server_state = *state_server_status.lock().await;
-
-        // Retry server connection if it failed and 1 second has passed
-        if state.server_state == ui::ConnectionState::Error && last_server_retry.elapsed() >= Duration::from_secs(1) {
-            last_server_retry = Instant::now();
-            *state_server_status.lock().await = ui::ConnectionState::Connecting;
-            
-            let client_clone = Arc::clone(&client);
-            let state_server_status_clone = Arc::clone(&state_server_status);
-            
-            tokio::spawn(async move {
-                match SocketClient::connect(server_addr).await {
-                    Ok(socket_client) => {
-                        *client_clone.lock().await = Some(socket_client);
-                        *state_server_status_clone.lock().await = ui::ConnectionState::Connected;
-                    }
-                    Err(_) => {
-                        *state_server_status_clone.lock().await = ui::ConnectionState::Error;
-                    }
-                }
-            });
-        }
-
-        // Read gamepad events (non-blocking via channel)
-        let events = gamepad.try_recv();
-        if !events.is_empty() {
-            state.gamepad_state = ui::ConnectionState::Connected;
-            state.gamepad_error = None;
-            
-            for event in events {
-                state.update(&event);
-
-                let mut client_guard = client.lock().await;
-                if let Some(ref mut c) = client_guard.as_mut() {
-                    if c.send_event(event).await.is_err() {
-                        // Server disconnected
-                        *client_guard = None;
-                        *state_server_status.lock().await = ui::ConnectionState::Error;
-                    }
-                }
-            }
-        }
-
-        // Render UI (always, even if no events)
-        terminal.draw(|f| {
-            ui::draw(f, &state);
-        })?;
-    }
-
-    // Cleanup terminal
-    disable_raw_mode()?;
-    execute!(terminal.backend_mut(), LeaveAlternateScreen)?;
-    terminal.show_cursor()?;
-
-    Ok(())
 }

@@ -1,0 +1,146 @@
+use bouton_core::control::GamepadControl;
+use serde::Deserialize;
+use std::process::Stdio;
+use std::sync::Arc;
+use tokio::io::{AsyncBufReadExt, BufReader};
+use tokio::process::{Child, Command};
+use tokio::sync::oneshot;
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum DaemonMsg {
+    Device { path: String, name: String },
+    Opened,
+    PermissionDenied,
+    OpenError { msg: String },
+    SendError { msg: String },
+    Button { control: GamepadControl, pressed: bool },
+    Axis { control: GamepadControl, value: i32 },
+}
+
+#[derive(Debug, Clone)]
+pub enum DaemonEvent {
+    Msg(DaemonMsg),
+    Stderr(String),
+    Exited(Option<i32>),
+}
+
+type Callback = Arc<dyn Fn(DaemonEvent) + Send + Sync + 'static>;
+
+fn wsl_cmd(as_root: bool, args: &[&str]) -> Command {
+    let mut cmd = Command::new("wsl");
+    if as_root {
+        cmd.args(["-u", "root"]);
+    }
+    cmd.arg("--");
+    cmd.arg("bouton-linux");
+    cmd.args(args);
+    cmd.stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .stdin(Stdio::null());
+    cmd
+}
+
+pub async fn list_devices(as_root: bool) -> Vec<(String, String)> {
+    let mut cmd = wsl_cmd(as_root, &["--list"]);
+    let Ok(mut child) = cmd.spawn() else {
+        return Vec::new();
+    };
+    let Some(stdout) = child.stdout.take() else {
+        return Vec::new();
+    };
+    let mut lines = BufReader::new(stdout).lines();
+    let mut out = Vec::new();
+    while let Ok(Some(line)) = lines.next_line().await {
+        if let Ok(DaemonMsg::Device { path, name }) = serde_json::from_str(&line) {
+            out.push((path, name));
+        }
+    }
+    let _ = child.wait().await;
+    out
+}
+
+pub struct DaemonHandle {
+    kill: Option<oneshot::Sender<()>>,
+}
+
+impl DaemonHandle {
+    pub fn stop(&mut self) {
+        if let Some(k) = self.kill.take() {
+            let _ = k.send(());
+        }
+    }
+}
+
+pub fn run(
+    device: String,
+    server: String,
+    as_root: bool,
+    on_event: impl Fn(DaemonEvent) + Send + Sync + 'static,
+) -> DaemonHandle {
+    let cb: Callback = Arc::new(on_event);
+    let (kill_tx, kill_rx) = oneshot::channel();
+    tokio::spawn(async move {
+        let mut cmd = wsl_cmd(as_root, &["--run", &device, &server]);
+        let mut child: Child = match cmd.spawn() {
+            Ok(c) => c,
+            Err(e) => {
+                cb(DaemonEvent::Msg(DaemonMsg::OpenError {
+                    msg: format!("spawn wsl: {e}"),
+                }));
+                cb(DaemonEvent::Exited(None));
+                return;
+            }
+        };
+        pump(&mut child, cb, kill_rx).await;
+    });
+    DaemonHandle {
+        kill: Some(kill_tx),
+    }
+}
+
+async fn pump(child: &mut Child, cb: Callback, mut kill_rx: oneshot::Receiver<()>) {
+    let stdout = child.stdout.take();
+    let stderr = child.stderr.take();
+
+    let stdout_task = {
+        let cb = cb.clone();
+        async move {
+            let Some(s) = stdout else { return };
+            let mut lines = BufReader::new(s).lines();
+            while let Ok(Some(line)) = lines.next_line().await {
+                match serde_json::from_str::<DaemonMsg>(&line) {
+                    Ok(msg) => cb(DaemonEvent::Msg(msg)),
+                    Err(_) => cb(DaemonEvent::Stderr(line)),
+                }
+            }
+        }
+    };
+    let stderr_task = {
+        let cb = cb.clone();
+        async move {
+            let Some(s) = stderr else { return };
+            let mut lines = BufReader::new(s).lines();
+            while let Ok(Some(line)) = lines.next_line().await {
+                cb(DaemonEvent::Stderr(line));
+            }
+        }
+    };
+
+    tokio::pin!(stdout_task);
+    tokio::pin!(stderr_task);
+
+    loop {
+        tokio::select! {
+            _ = &mut stdout_task => break,
+            _ = &mut stderr_task => {}
+            _ = &mut kill_rx => {
+                let _ = child.kill().await;
+                break;
+            }
+        }
+    }
+
+    let code = child.wait().await.ok().and_then(|s| s.code());
+    cb(DaemonEvent::Exited(code));
+}

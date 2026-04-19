@@ -1,29 +1,23 @@
+use haven::{Key, NamedKey};
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum KeyCode {
-    // Mouse buttons
     LButton,
     RButton,
     MButton,
     XButton1,
     XButton2,
-
-    // Standard keys
     Backspace,
     Tab,
     Clear,
     Enter,
-    Return,
     Shift,
     Control,
-    Ctrl,
     Alt,
     Pause,
     CapsLock,
     Escape,
-    Esc,
     Space,
     PageUp,
     PageDown,
@@ -39,32 +33,17 @@ pub enum KeyCode {
     PrintScreen,
     Insert,
     Delete,
-    Del,
     Help,
-
-    // Number keys
-    #[serde(rename = "0")]
     Key0,
-    #[serde(rename = "1")]
     Key1,
-    #[serde(rename = "2")]
     Key2,
-    #[serde(rename = "3")]
     Key3,
-    #[serde(rename = "4")]
     Key4,
-    #[serde(rename = "5")]
     Key5,
-    #[serde(rename = "6")]
     Key6,
-    #[serde(rename = "7")]
     Key7,
-    #[serde(rename = "8")]
     Key8,
-    #[serde(rename = "9")]
     Key9,
-
-    // Letter keys
     A,
     B,
     C,
@@ -91,14 +70,10 @@ pub enum KeyCode {
     X,
     Y,
     Z,
-
-    // Windows keys
     LWin,
     RWin,
     Apps,
     Sleep,
-
-    // Numpad
     Numpad0,
     Numpad1,
     Numpad2,
@@ -115,8 +90,6 @@ pub enum KeyCode {
     Subtract,
     Decimal,
     Divide,
-
-    // Function keys
     F1,
     F2,
     F3,
@@ -141,20 +114,14 @@ pub enum KeyCode {
     F22,
     F23,
     F24,
-
-    // Numlock and scroll lock
     NumLock,
     ScrollLock,
-
-    // Shift/Ctrl/Alt variants
     LShift,
     RShift,
     LControl,
     RControl,
     LAlt,
     RAlt,
-
-    // Browser keys
     BrowserBack,
     BrowserForward,
     BrowserRefresh,
@@ -162,8 +129,6 @@ pub enum KeyCode {
     BrowserSearch,
     BrowserFavorites,
     BrowserHome,
-
-    // Volume and media
     VolumeMute,
     VolumeDown,
     VolumeUp,
@@ -175,8 +140,6 @@ pub enum KeyCode {
     LaunchMediaSelect,
     LaunchApp1,
     LaunchApp2,
-
-    // OEM keys
     OemSemicolon,
     OemEquals,
     OemComma,
@@ -191,24 +154,129 @@ pub enum KeyCode {
 }
 
 impl KeyCode {
-    pub fn code(&self) -> u32 {
+    pub fn from_key(key: &Key) -> Option<Self> {
+        match key {
+            Key::Character(s) => {
+                let mut chars = s.chars();
+                let c = chars.next()?;
+                if chars.next().is_some() {
+                    return None;
+                }
+                match c.to_ascii_uppercase() {
+                    'A' => Some(KeyCode::A),
+                    'B' => Some(KeyCode::B),
+                    'C' => Some(KeyCode::C),
+                    'D' => Some(KeyCode::D),
+                    'E' => Some(KeyCode::E),
+                    'F' => Some(KeyCode::F),
+                    'G' => Some(KeyCode::G),
+                    'H' => Some(KeyCode::H),
+                    'I' => Some(KeyCode::I),
+                    'J' => Some(KeyCode::J),
+                    'K' => Some(KeyCode::K),
+                    'L' => Some(KeyCode::L),
+                    'M' => Some(KeyCode::M),
+                    'N' => Some(KeyCode::N),
+                    'O' => Some(KeyCode::O),
+                    'P' => Some(KeyCode::P),
+                    'Q' => Some(KeyCode::Q),
+                    'R' => Some(KeyCode::R),
+                    'S' => Some(KeyCode::S),
+                    'T' => Some(KeyCode::T),
+                    'U' => Some(KeyCode::U),
+                    'V' => Some(KeyCode::V),
+                    'W' => Some(KeyCode::W),
+                    'X' => Some(KeyCode::X),
+                    'Y' => Some(KeyCode::Y),
+                    'Z' => Some(KeyCode::Z),
+                    '0' => Some(KeyCode::Key0),
+                    '1' => Some(KeyCode::Key1),
+                    '2' => Some(KeyCode::Key2),
+                    '3' => Some(KeyCode::Key3),
+                    '4' => Some(KeyCode::Key4),
+                    '5' => Some(KeyCode::Key5),
+                    '6' => Some(KeyCode::Key6),
+                    '7' => Some(KeyCode::Key7),
+                    '8' => Some(KeyCode::Key8),
+                    '9' => Some(KeyCode::Key9),
+                    ';' => Some(KeyCode::OemSemicolon),
+                    '=' => Some(KeyCode::OemEquals),
+                    ',' => Some(KeyCode::OemComma),
+                    '-' => Some(KeyCode::OemMinus),
+                    '.' => Some(KeyCode::OemPeriod),
+                    '/' => Some(KeyCode::OemSlash),
+                    '`' => Some(KeyCode::OemBacktick),
+                    '[' => Some(KeyCode::OemLBracket),
+                    '\\' => Some(KeyCode::OemBackslash),
+                    ']' => Some(KeyCode::OemRBracket),
+                    '\'' => Some(KeyCode::OemQuote),
+                    _ => None,
+                }
+            }
+            Key::Named(n) => match n {
+                NamedKey::Space => Some(KeyCode::Space),
+                NamedKey::Enter => Some(KeyCode::Enter),
+                NamedKey::Tab => Some(KeyCode::Tab),
+                NamedKey::Backspace => Some(KeyCode::Backspace),
+                NamedKey::ArrowUp => Some(KeyCode::Up),
+                NamedKey::ArrowDown => Some(KeyCode::Down),
+                NamedKey::ArrowLeft => Some(KeyCode::Left),
+                NamedKey::ArrowRight => Some(KeyCode::Right),
+                NamedKey::Home => Some(KeyCode::Home),
+                NamedKey::End => Some(KeyCode::End),
+                NamedKey::PageUp => Some(KeyCode::PageUp),
+                NamedKey::PageDown => Some(KeyCode::PageDown),
+                NamedKey::Insert => Some(KeyCode::Insert),
+                NamedKey::Delete => Some(KeyCode::Delete),
+                NamedKey::CapsLock => Some(KeyCode::CapsLock),
+                NamedKey::NumLock => Some(KeyCode::NumLock),
+                NamedKey::ScrollLock => Some(KeyCode::ScrollLock),
+                NamedKey::Shift => Some(KeyCode::Shift),
+                NamedKey::Control => Some(KeyCode::Control),
+                NamedKey::Alt => Some(KeyCode::Alt),
+                NamedKey::Pause => Some(KeyCode::Pause),
+                NamedKey::PrintScreen => Some(KeyCode::PrintScreen),
+                NamedKey::F1 => Some(KeyCode::F1),
+                NamedKey::F2 => Some(KeyCode::F2),
+                NamedKey::F3 => Some(KeyCode::F3),
+                NamedKey::F4 => Some(KeyCode::F4),
+                NamedKey::F5 => Some(KeyCode::F5),
+                NamedKey::F6 => Some(KeyCode::F6),
+                NamedKey::F7 => Some(KeyCode::F7),
+                NamedKey::F8 => Some(KeyCode::F8),
+                NamedKey::F9 => Some(KeyCode::F9),
+                NamedKey::F10 => Some(KeyCode::F10),
+                NamedKey::F11 => Some(KeyCode::F11),
+                NamedKey::F12 => Some(KeyCode::F12),
+                NamedKey::MediaPlayPause => Some(KeyCode::MediaPlayPause),
+                NamedKey::MediaStop => Some(KeyCode::MediaStop),
+                NamedKey::MediaTrackNext => Some(KeyCode::MediaNextTrack),
+                NamedKey::MediaTrackPrevious => Some(KeyCode::MediaPrevTrack),
+                NamedKey::AudioVolumeMute => Some(KeyCode::VolumeMute),
+                NamedKey::AudioVolumeDown => Some(KeyCode::VolumeDown),
+                NamedKey::AudioVolumeUp => Some(KeyCode::VolumeUp),
+                _ => None,
+            },
+        }
+    }
+
+    pub fn vk(&self) -> u32 {
         match self {
             KeyCode::LButton => 0x01,
             KeyCode::RButton => 0x02,
             KeyCode::MButton => 0x04,
             KeyCode::XButton1 => 0x05,
             KeyCode::XButton2 => 0x06,
-
             KeyCode::Backspace => 0x08,
             KeyCode::Tab => 0x09,
             KeyCode::Clear => 0x0C,
-            KeyCode::Enter | KeyCode::Return => 0x0D,
+            KeyCode::Enter => 0x0D,
             KeyCode::Shift => 0x10,
-            KeyCode::Control | KeyCode::Ctrl => 0x11,
+            KeyCode::Control => 0x11,
             KeyCode::Alt => 0x12,
             KeyCode::Pause => 0x13,
             KeyCode::CapsLock => 0x14,
-            KeyCode::Escape | KeyCode::Esc => 0x1B,
+            KeyCode::Escape => 0x1B,
             KeyCode::Space => 0x20,
             KeyCode::PageUp => 0x21,
             KeyCode::PageDown => 0x22,
@@ -223,9 +291,8 @@ impl KeyCode {
             KeyCode::Execute => 0x2B,
             KeyCode::PrintScreen => 0x2C,
             KeyCode::Insert => 0x2D,
-            KeyCode::Delete | KeyCode::Del => 0x2E,
+            KeyCode::Delete => 0x2E,
             KeyCode::Help => 0x2F,
-
             KeyCode::Key0 => 0x30,
             KeyCode::Key1 => 0x31,
             KeyCode::Key2 => 0x32,
@@ -236,7 +303,6 @@ impl KeyCode {
             KeyCode::Key7 => 0x37,
             KeyCode::Key8 => 0x38,
             KeyCode::Key9 => 0x39,
-
             KeyCode::A => 0x41,
             KeyCode::B => 0x42,
             KeyCode::C => 0x43,
@@ -263,12 +329,10 @@ impl KeyCode {
             KeyCode::X => 0x58,
             KeyCode::Y => 0x59,
             KeyCode::Z => 0x5A,
-
             KeyCode::LWin => 0x5B,
             KeyCode::RWin => 0x5C,
             KeyCode::Apps => 0x5D,
             KeyCode::Sleep => 0x5F,
-
             KeyCode::Numpad0 => 0x60,
             KeyCode::Numpad1 => 0x61,
             KeyCode::Numpad2 => 0x62,
@@ -285,7 +349,6 @@ impl KeyCode {
             KeyCode::Subtract => 0x6D,
             KeyCode::Decimal => 0x6E,
             KeyCode::Divide => 0x6F,
-
             KeyCode::F1 => 0x70,
             KeyCode::F2 => 0x71,
             KeyCode::F3 => 0x72,
@@ -310,17 +373,14 @@ impl KeyCode {
             KeyCode::F22 => 0x85,
             KeyCode::F23 => 0x86,
             KeyCode::F24 => 0x87,
-
             KeyCode::NumLock => 0x90,
             KeyCode::ScrollLock => 0x91,
-
             KeyCode::LShift => 0xA0,
             KeyCode::RShift => 0xA1,
             KeyCode::LControl => 0xA2,
             KeyCode::RControl => 0xA3,
             KeyCode::LAlt => 0xA4,
             KeyCode::RAlt => 0xA5,
-
             KeyCode::BrowserBack => 0xA6,
             KeyCode::BrowserForward => 0xA7,
             KeyCode::BrowserRefresh => 0xA8,
@@ -328,7 +388,6 @@ impl KeyCode {
             KeyCode::BrowserSearch => 0xAA,
             KeyCode::BrowserFavorites => 0xAB,
             KeyCode::BrowserHome => 0xAC,
-
             KeyCode::VolumeMute => 0xAD,
             KeyCode::VolumeDown => 0xAE,
             KeyCode::VolumeUp => 0xAF,
@@ -340,7 +399,6 @@ impl KeyCode {
             KeyCode::LaunchMediaSelect => 0xB5,
             KeyCode::LaunchApp1 => 0xB6,
             KeyCode::LaunchApp2 => 0xB7,
-
             KeyCode::OemSemicolon => 0xBA,
             KeyCode::OemEquals => 0xBB,
             KeyCode::OemComma => 0xBC,
@@ -355,8 +413,7 @@ impl KeyCode {
         }
     }
 
-    #[allow(dead_code)]
-    pub fn name(&self) -> &'static str {
+    pub fn label(&self) -> &'static str {
         match self {
             KeyCode::LButton => "LButton",
             KeyCode::RButton => "RButton",
@@ -366,13 +423,13 @@ impl KeyCode {
             KeyCode::Backspace => "Backspace",
             KeyCode::Tab => "Tab",
             KeyCode::Clear => "Clear",
-            KeyCode::Enter | KeyCode::Return => "Enter",
+            KeyCode::Enter => "Enter",
             KeyCode::Shift => "Shift",
-            KeyCode::Control | KeyCode::Ctrl => "Ctrl",
+            KeyCode::Control => "Ctrl",
             KeyCode::Alt => "Alt",
             KeyCode::Pause => "Pause",
             KeyCode::CapsLock => "CapsLock",
-            KeyCode::Escape | KeyCode::Esc => "Esc",
+            KeyCode::Escape => "Esc",
             KeyCode::Space => "Space",
             KeyCode::PageUp => "PageUp",
             KeyCode::PageDown => "PageDown",
@@ -387,7 +444,7 @@ impl KeyCode {
             KeyCode::Execute => "Execute",
             KeyCode::PrintScreen => "PrintScreen",
             KeyCode::Insert => "Insert",
-            KeyCode::Delete | KeyCode::Del => "Delete",
+            KeyCode::Delete => "Delete",
             KeyCode::Help => "Help",
             KeyCode::Key0 => "0",
             KeyCode::Key1 => "1",
@@ -473,8 +530,17 @@ impl KeyCode {
             KeyCode::ScrollLock => "ScrollLock",
             KeyCode::LShift => "LShift",
             KeyCode::RShift => "RShift",
+            KeyCode::LControl => "LCtrl",
+            KeyCode::RControl => "RCtrl",
             KeyCode::LAlt => "LAlt",
             KeyCode::RAlt => "RAlt",
+            KeyCode::BrowserBack => "BrowserBack",
+            KeyCode::BrowserForward => "BrowserForward",
+            KeyCode::BrowserRefresh => "BrowserRefresh",
+            KeyCode::BrowserStop => "BrowserStop",
+            KeyCode::BrowserSearch => "BrowserSearch",
+            KeyCode::BrowserFavorites => "BrowserFavorites",
+            KeyCode::BrowserHome => "BrowserHome",
             KeyCode::VolumeMute => "VolumeMute",
             KeyCode::VolumeDown => "VolumeDown",
             KeyCode::VolumeUp => "VolumeUp",
@@ -497,15 +563,6 @@ impl KeyCode {
             KeyCode::OemBackslash => "\\",
             KeyCode::OemRBracket => "]",
             KeyCode::OemQuote => "'",
-            KeyCode::LControl => "LCtrl",
-            KeyCode::RControl => "RCtrl",
-            KeyCode::BrowserBack => "BrowserBack",
-            KeyCode::BrowserForward => "BrowserForward",
-            KeyCode::BrowserRefresh => "BrowserRefresh",
-            KeyCode::BrowserStop => "BrowserStop",
-            KeyCode::BrowserSearch => "BrowserSearch",
-            KeyCode::BrowserFavorites => "BrowserFavorites",
-            KeyCode::BrowserHome => "BrowserHome",
         }
     }
 }

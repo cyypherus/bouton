@@ -36,10 +36,10 @@ pub enum GamepadControl {
 impl fmt::Display for GamepadControl {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let name = match self {
-            GamepadControl::Square => "□ Square",
-            GamepadControl::Cross => "✕ Cross",
-            GamepadControl::Circle => "○ Circle",
-            GamepadControl::Triangle => "△ Triangle",
+            GamepadControl::Square => "Square",
+            GamepadControl::Cross => "Cross",
+            GamepadControl::Circle => "Circle",
+            GamepadControl::Triangle => "Triangle",
             GamepadControl::L1 => "L1",
             GamepadControl::R1 => "R1",
             GamepadControl::L3 => "L3",

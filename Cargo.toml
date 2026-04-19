@@ -1,3 +1,12 @@
 [workspace]
-members = ["crates/bouton-core", "crates/bouton-linux", "crates/bouton-windows", "crates/bouton-setup"]
+members = ["crates/bouton-core", "crates/bouton-linux", "crates/bouton-windows"]
 resolver = "2"
+
+[workspace.dependencies]
+haven = { git = "https://github.com/cyypherus/haven", branch = "main" }
+bouton-core = { path = "crates/bouton-core" }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+bincode = "1.3"
+tokio = { version = "1.0", features = ["full"] }
+directories = "6.0"
