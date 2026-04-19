@@ -27,32 +27,21 @@ pub enum DaemonEvent {
 
 type Callback = Arc<dyn Fn(DaemonEvent) + Send + Sync + 'static>;
 
-fn sh_quote(s: &str) -> String {
-    let mut out = String::with_capacity(s.len() + 2);
-    out.push('\'');
-    for ch in s.chars() {
-        if ch == '\'' {
-            out.push_str("'\\''");
-        } else {
-            out.push(ch);
-        }
-    }
-    out.push('\'');
-    out
-}
-
 fn wsl_cmd(as_root: bool, args: &[&str]) -> Command {
-    let mut script = String::from(". \"$HOME/.cargo/env\" 2>/dev/null; exec bouton-linux");
-    for a in args {
-        script.push(' ');
-        script.push_str(&sh_quote(a));
-    }
+    let script = "h=$(getent passwd \"$(id -un)\" | cut -d: -f6); \
+         for p in \"$h/.cargo/bin/bouton-linux\" /usr/local/bin/bouton-linux /usr/bin/bouton-linux; do \
+           [ -x \"$p\" ] && exec \"$p\" \"$@\"; \
+         done; \
+         command -v bouton-linux >/dev/null && exec bouton-linux \"$@\"; \
+         echo \"bouton-linux not found (looked in $h/.cargo/bin, /usr/local/bin, /usr/bin, and PATH=$PATH)\" >&2; \
+         exit 127";
     let mut cmd = Command::new("wsl");
     if as_root {
         cmd.args(["-u", "root"]);
     }
     cmd.arg("--");
-    cmd.args(["bash", "-lc", &script]);
+    cmd.args(["bash", "-c", script, "bash"]);
+    cmd.args(args);
     cmd.stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .stdin(Stdio::null());
@@ -131,6 +120,7 @@ fn looks_like_missing_binary(stderr: &str) -> bool {
     let lower = stderr.to_ascii_lowercase();
     lower.contains("command not found")
         || lower.contains("bouton-linux: not found")
+        || lower.contains("bouton-linux not found")
         || lower.contains("no such file or directory")
         || lower.contains("not recognized")
 }
