@@ -17,18 +17,18 @@ pub fn launch_wsl_client(device: &str, server: &str, sudo: bool) -> Result<(), S
          if [ -z \"$host\" ] || [ \"$host\" = '0.0.0.0' ]; then \
            detected=\"$(ip route show default 2>/dev/null | awk '{{print $3; exit}}')\"; \
            if [ -z \"$detected\" ]; then \
-             detected=\"$(cat /etc/resolv.conf 2>/dev/null | awk '/^nameserver/ {{print $2; exit}}')\"; \
+             detected=\"$(awk '/^nameserver/ {{ip=$2}} END{{print ip}}' /etc/resolv.conf 2>/dev/null)\"; \
+             case \"$detected\" in 127.*) detected=\"\" ;; esac; \
            fi; \
            if [ -z \"$detected\" ]; then \
-             echo \"could not auto-detect Windows host IP from WSL.\" >&2; \
-             echo \"set a real IP in the Server Address field (not 0.0.0.0).\" >&2; \
-             echo; \
-             echo \"press Enter to close\"; \
-             read; \
-             exit 1; \
+             detected=\"$(cat /mnt/c/Windows/System32/drivers/etc/hosts 2>/dev/null | awk '/host.docker.internal|windows.host/ {{print $1; exit}}')\"; \
+           fi; \
+           if [ -z \"$detected\" ]; then \
+             detected='127.0.0.1'; \
+             echo \"[falling back to 127.0.0.1 — assuming WSL mirrored networking]\"; \
            fi; \
            host=\"$detected\"; \
-           echo \"[auto-detected Windows host: $host]\"; \
+           echo \"[Windows host: $host]\"; \
          fi; \
          {bin} --run {device_q} \"$host:$port\"; \
          echo; \
