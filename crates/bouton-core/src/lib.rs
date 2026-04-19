@@ -35,27 +35,6 @@ pub enum GamepadEvent {
     Axis { code: u16, value: i32 },
 }
 
-#[cfg(feature = "evdev-support")]
-impl GamepadEvent {
-    pub fn from_evdev(event: evdev::InputEvent) -> Option<Self> {
-        match event.event_type() {
-            evdev::EventType::KEY => {
-                Some(GamepadEvent::Button {
-                    code: event.code(),
-                    pressed: event.value() != 0,
-                })
-            }
-            evdev::EventType::ABSOLUTE => {
-                Some(GamepadEvent::Axis {
-                    code: event.code(),
-                    value: event.value(),
-                })
-            }
-            _ => None,
-        }
-    }
-}
-
 impl GamepadEvent {
     pub fn to_control(self) -> Option<ControlEvent> {
         match self {

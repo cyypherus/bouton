@@ -203,7 +203,6 @@ dependencies = [
 name = "bouton-core"
 version = "0.1.0"
 dependencies = [
- "evdev",
  "serde",
  "serde_json",
 ]

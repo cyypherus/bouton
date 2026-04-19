@@ -1,9 +1,23 @@
-use bouton_core::{ControlEvent, KeyAction, control::GamepadControl};
+use bouton_core::{ControlEvent, GamepadEvent, KeyAction, control::GamepadControl};
 use serde::Serialize;
 use std::io::{BufWriter, Write};
 use std::net::SocketAddr;
 use std::path::Path;
 use tokio::net::UdpSocket;
+
+fn gamepad_event_from_evdev(event: evdev::InputEvent) -> Option<GamepadEvent> {
+    match event.event_type() {
+        evdev::EventType::KEY => Some(GamepadEvent::Button {
+            code: event.code(),
+            pressed: event.value() != 0,
+        }),
+        evdev::EventType::ABSOLUTE => Some(GamepadEvent::Axis {
+            code: event.code(),
+            value: event.value(),
+        }),
+        _ => None,
+    }
+}
 
 #[derive(Serialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
@@ -112,7 +126,7 @@ fn run(device: String, server: String) {
                 }
             };
             for ev in events {
-                let Some(ge) = bouton_core::GamepadEvent::from_evdev(ev) else {
+                let Some(ge) = gamepad_event_from_evdev(ev) else {
                     continue;
                 };
                 let Some(ce) = ge.to_control() else { continue };
