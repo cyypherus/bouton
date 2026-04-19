@@ -1,7 +1,7 @@
 pub mod control;
 
-use serde::{Deserialize, Serialize};
 use control::GamepadControl;
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum KeyAction {

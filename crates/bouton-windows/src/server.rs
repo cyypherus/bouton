@@ -105,12 +105,7 @@ pub async fn run<E>(
     }
 }
 
-fn handle<E: Fn(ServerEvent)>(
-    ev: ControlEvent,
-    m: &Mappings,
-    st: &mut State,
-    on_event: &E,
-) {
+fn handle<E: Fn(ServerEvent)>(ev: ControlEvent, m: &Mappings, st: &mut State, on_event: &E) {
     match ev {
         ControlEvent::Button(b) => {
             if let Some(&key) = m.buttons.get(&b.control) {
@@ -166,11 +161,7 @@ fn inject_key<E: Fn(ServerEvent)>(key: KeyCode, action: KeyAction, on_event: &E)
     }
 }
 
-fn set_key<E: Fn(ServerEvent)>(
-    slot: &mut Option<KeyCode>,
-    new: Option<KeyCode>,
-    on_event: &E,
-) {
+fn set_key<E: Fn(ServerEvent)>(slot: &mut Option<KeyCode>, new: Option<KeyCode>, on_event: &E) {
     if *slot == new {
         return;
     }
@@ -219,7 +210,11 @@ fn handle_stick<E: Fn(ServerEvent)>(
     let x_in = adaptive_in_deadzone(xd, yd, base);
     let y_in = adaptive_in_deadzone(yd, xd, base);
 
-    let (mut xk, mut yk) = st.stick_pressed.get(&stick).copied().unwrap_or((None, None));
+    let (mut xk, mut yk) = st
+        .stick_pressed
+        .get(&stick)
+        .copied()
+        .unwrap_or((None, None));
 
     let new_x = if x_in {
         None
@@ -254,7 +249,11 @@ fn handle_trigger<E: Fn(ServerEvent)>(
     if is != was {
         inject_key(
             cfg.key,
-            if is { KeyAction::Press } else { KeyAction::Release },
+            if is {
+                KeyAction::Press
+            } else {
+                KeyAction::Release
+            },
             on_event,
         );
         st.trigger_pressed.insert(control, is);

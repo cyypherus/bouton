@@ -1,15 +1,17 @@
-#![cfg_attr(all(target_os = "windows", not(debug_assertions)), windows_subsystem = "windows")]
+#![cfg_attr(
+    all(target_os = "windows", not(debug_assertions)),
+    windows_subsystem = "windows"
+)]
 #![allow(clippy::type_complexity, clippy::too_many_arguments)]
 
-mod daemon;
 mod injector;
 mod keycode;
+mod launch;
 mod mappings;
 mod server;
 mod setup;
 mod view;
 
-use crate::daemon::{DaemonEvent, DaemonHandle, DaemonMsg};
 use crate::keycode::KeyCode;
 use crate::mappings::{DPadMapping, Mappings, StickId, StickMapping, TriggerMapping};
 use crate::server::ServerEvent;
@@ -19,6 +21,7 @@ use haven::*;
 use std::collections::{HashMap, VecDeque};
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
+use std::time::Instant;
 use tokio::sync::watch;
 
 const MAX_LOG: usize = 200;
@@ -51,14 +54,6 @@ pub enum LogEntry {
 pub enum ServerStatus {
     Starting,
     Listening,
-    Failed,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum GpStatus {
-    Idle,
-    Opening,
-    Ready,
     Failed,
 }
 
@@ -97,19 +92,10 @@ pub struct State {
     pub attach_btn: ButtonState,
     pub detach_btn: ButtonState,
 
-    pub gp_devices: Vec<(String, String)>,
-    pub gp_device_dd: DropdownState<String>,
-    pub gp_refresh_btn: ButtonState,
-    pub start_btn: ButtonState,
-    pub stop_btn: ButtonState,
-    pub gp_status: GpStatus,
-    pub gp_detail: String,
-    pub gp_list_error: String,
-    pub daemon: Option<DaemonHandle>,
-    pub as_root: bool,
-    pub pending_retry_as_root: bool,
-    pub live_buttons: HashMap<GamepadControl, bool>,
-    pub live_axes: HashMap<GamepadControl, i32>,
+    pub gp_device_field: TextState,
+    pub launch_wsl_btn: ButtonState,
+    pub launch_error: String,
+    pub last_key: Option<(String, Instant)>,
 }
 
 impl State {
@@ -119,7 +105,7 @@ impl State {
         let shared = Arc::new(Mutex::new(mappings.clone()));
         let (rebind_tx, _) = watch::channel((mappings.listen_addr.clone(), mappings.listen_port));
         let selected_busid = mappings.last_busid.clone().unwrap_or_default();
-        let selected_device = mappings.last_device.clone().unwrap_or_default();
+        let last_device = mappings.last_device.clone().unwrap_or_default();
 
         let mut s = Self {
             key_buttons: HashMap::new(),
@@ -141,23 +127,10 @@ impl State {
             attach_btn: ButtonState::default(),
             detach_btn: ButtonState::default(),
 
-            gp_devices: Vec::new(),
-            gp_device_dd: DropdownState {
-                selected: selected_device,
-                hovered: None,
-                expanded: false,
-            },
-            gp_refresh_btn: ButtonState::default(),
-            start_btn: ButtonState::default(),
-            stop_btn: ButtonState::default(),
-            gp_status: GpStatus::Idle,
-            gp_detail: String::new(),
-            gp_list_error: String::new(),
-            daemon: None,
-            as_root: false,
-            pending_retry_as_root: false,
-            live_buttons: HashMap::new(),
-            live_axes: HashMap::new(),
+            gp_device_field: TextState::new(last_device),
+            launch_wsl_btn: ButtonState::default(),
+            launch_error: String::new(),
+            last_key: None,
 
             status: ServerStatus::Starting,
             status_detail: String::new(),
@@ -259,14 +232,12 @@ impl State {
     pub fn slot_current_key(&self, slot: ListenSlot) -> Option<KeyCode> {
         match slot {
             ListenSlot::Button(c) => self.mappings.buttons.get(&c).copied(),
-            ListenSlot::Stick(stick, dir) => {
-                self.mappings.sticks.get(&stick).map(|m| match dir {
-                    StickDir::Up => m.up,
-                    StickDir::Down => m.down,
-                    StickDir::Left => m.left,
-                    StickDir::Right => m.right,
-                })
-            }
+            ListenSlot::Stick(stick, dir) => self.mappings.sticks.get(&stick).map(|m| match dir {
+                StickDir::Up => m.up,
+                StickDir::Down => m.down,
+                StickDir::Left => m.left,
+                StickDir::Right => m.right,
+            }),
             ListenSlot::Trigger(c) => self.mappings.triggers.get(&c).map(|t| t.key),
             ListenSlot::DPad(dir) => self.mappings.dpad.map(|d| match dir {
                 DPadDir::Up => d.up,
@@ -354,9 +325,11 @@ fn on_server_event(state: &mut State, ev: ServerEvent) {
             state.push_log(LogEntry::Info(format!("client {addr}")));
         }
         ServerEvent::KeyPressed(k) => {
+            state.last_key = Some((format!("press {}", k.label()), Instant::now()));
             state.push_log(LogEntry::Key(format!("press {}", k.label())));
         }
         ServerEvent::KeyReleased(k) => {
+            state.last_key = Some((format!("release {}", k.label()), Instant::now()));
             state.push_log(LogEntry::Key(format!("release {}", k.label())));
         }
         ServerEvent::Unbound(c) => {
@@ -368,98 +341,38 @@ fn on_server_event(state: &mut State, ev: ServerEvent) {
     }
 }
 
-fn on_daemon_event(state: &mut State, ev: DaemonEvent) {
-    match ev {
-        DaemonEvent::Msg(DaemonMsg::Device { .. }) => {}
-        DaemonEvent::Msg(DaemonMsg::Opened) => {
-            state.gp_status = GpStatus::Ready;
-            state.gp_detail = state.gp_device_dd.selected.clone();
-            state.push_log(LogEntry::Info(format!(
-                "daemon opened {}",
-                state.gp_device_dd.selected
-            )));
-        }
-        DaemonEvent::Msg(DaemonMsg::PermissionDenied) => {
-            state.push_log(LogEntry::Warn("permission denied".into()));
-            if !state.as_root {
-                state.pending_retry_as_root = true;
-            } else {
-                state.gp_status = GpStatus::Failed;
-                state.gp_detail = "permission denied".into();
-            }
-        }
-        DaemonEvent::Msg(DaemonMsg::OpenError { msg }) => {
-            state.gp_status = GpStatus::Failed;
-            state.gp_detail = msg.clone();
-            state.push_log(LogEntry::Error(format!("daemon: {msg}")));
-        }
-        DaemonEvent::Msg(DaemonMsg::SendError { msg }) => {
-            state.push_log(LogEntry::Warn(format!("daemon send: {msg}")));
-        }
-        DaemonEvent::Msg(DaemonMsg::Button { control, pressed }) => {
-            state.live_buttons.insert(control, pressed);
-        }
-        DaemonEvent::Msg(DaemonMsg::Axis { control, value }) => {
-            state.live_axes.insert(control, value);
-        }
-        DaemonEvent::Stderr(line) => {
-            state.push_log(LogEntry::Warn(format!("wsl: {line}")));
-        }
-        DaemonEvent::Exited(code) => {
-            state.daemon = None;
-            state.live_buttons.clear();
-            state.live_axes.clear();
-            if !matches!(state.gp_status, GpStatus::Failed) && !state.pending_retry_as_root {
-                state.gp_status = GpStatus::Idle;
-                state.gp_detail = code
-                    .map(|c| format!("exited {c}"))
-                    .unwrap_or_else(|| "exited".into());
-            }
-            state.push_log(LogEntry::Info(format!("daemon exited {code:?}")));
-        }
-    }
-}
-
-pub fn start_daemon(state: &mut State, app: &mut AppState) {
-    if state.daemon.is_some() {
-        return;
-    }
-    let device = state.gp_device_dd.selected.clone();
+pub fn launch_wsl_client(state: &mut State, app: &mut AppState) {
+    let device = state.gp_device_field.text.trim().to_string();
     if device.is_empty() {
-        let msg = if state.gp_list_error.is_empty() {
-            "No gamepad device selected. Click Refresh to scan WSL.".to_string()
-        } else {
-            state.gp_list_error.clone()
-        };
-        state.push_log(LogEntry::Warn(msg));
+        state.launch_error =
+            "Enter a WSL device path (e.g. /dev/input/event8) before launching.".into();
+        state.push_log(LogEntry::Warn(state.launch_error.clone()));
         return;
     }
-    let server = format!("{}:{}", state.mappings.listen_addr, state.mappings.listen_port);
-    state.gp_status = GpStatus::Opening;
-    state.gp_detail = device.clone();
+    state.mappings.last_device = Some(device.clone());
+    let server = format!(
+        "{}:{}",
+        state.mappings.listen_addr, state.mappings.listen_port
+    );
+    let dev_for_log = device.clone();
+    let server_for_log = server.clone();
     state.push_log(LogEntry::Info(format!(
-        "launching daemon {device} -> {server} (root: {})",
-        state.as_root
+        "launching WSL client: bouton-linux --run {dev_for_log} {server_for_log}"
     )));
-    let cb = app.callback(on_daemon_event);
-    let (handle, kill_rx) = daemon::handle();
-    let as_root = state.as_root;
-    app.spawn(async move {
-        daemon::run(device, server, as_root, kill_rx, move |ev| cb.send(ev)).await;
+    let cb = app.callback(|s: &mut State, res: Result<(), String>| match res {
+        Ok(()) => s.launch_error.clear(),
+        Err(e) => {
+            s.launch_error = e.clone();
+            s.push_log(LogEntry::Error(format!("launch: {e}")));
+        }
     });
-    state.daemon = Some(handle);
-}
-
-pub fn stop_daemon(state: &mut State) {
-    if let Some(mut h) = state.daemon.take() {
-        h.stop();
-    }
-    state.as_root = false;
-    state.pending_retry_as_root = false;
-    state.gp_status = GpStatus::Idle;
-    state.gp_detail.clear();
-    state.live_buttons.clear();
-    state.live_axes.clear();
+    app.spawn(async move {
+        let res = tokio::task::spawn_blocking(move || launch::launch_wsl_client(&device, &server))
+            .await
+            .unwrap_or_else(|e| Err(format!("task panic: {e}")));
+        cb.send(res);
+    });
+    state.persist(app);
 }
 
 fn main() {
@@ -482,17 +395,16 @@ fn main() {
             state.addr_field = TextState::new(state.mappings.listen_addr.clone());
             state.port_field = TextState::new(state.mappings.listen_port.to_string());
             state.device_dd.selected = state.mappings.last_busid.clone().unwrap_or_default();
-            state.gp_device_dd.selected = state.mappings.last_device.clone().unwrap_or_default();
+            state.gp_device_field =
+                TextState::new(state.mappings.last_device.clone().unwrap_or_default());
             state.sync_sliders_from_mappings();
             if let Ok(mut guard) = state.mappings_shared.lock() {
                 *guard = state.mappings.clone();
             }
-            let _ = state
-                .rebind_tx
-                .send((
-                    state.mappings.listen_addr.clone(),
-                    state.mappings.listen_port,
-                ));
+            let _ = state.rebind_tx.send((
+                state.mappings.listen_addr.clone(),
+                state.mappings.listen_port,
+            ));
         });
         app.spawn(async move {
             loaded.send(mappings::load().await);
@@ -514,63 +426,12 @@ fn main() {
                 .unwrap_or_default();
             devices_cb.send(devs);
         });
-
-        refresh_gp_devices(app);
-    })
-    .on_frame(|state, app| {
-        if state.pending_retry_as_root && state.daemon.is_none() {
-            state.pending_retry_as_root = false;
-            state.as_root = true;
-            start_daemon(state, app);
-        }
     })
     .on_exit(|state, app| {
-        if let Some(mut h) = state.daemon.take() {
-            h.stop();
-        }
         let m = state.mappings.clone();
         app.spawn(async move {
             mappings::save(m).await;
         });
     })
     .start();
-}
-
-pub fn refresh_gp_devices(app: &mut AppState) {
-    let cb = app.callback(|s: &mut State, res: daemon::ListResult| {
-        s.gp_devices = res.devices;
-        if s.gp_device_dd.selected.is_empty()
-            && let Some((first, _)) = s.gp_devices.first()
-        {
-            s.gp_device_dd.selected = first.clone();
-        }
-        match res.error {
-            None => {
-                s.gp_list_error.clear();
-                if s.gp_devices.is_empty() {
-                    s.gp_list_error =
-                        "No input devices in WSL. Attach the gamepad with usbipd first.".into();
-                }
-            }
-            Some(daemon::ListError::WslMissing(msg)) => {
-                s.gp_list_error = format!("Can't reach WSL: {msg}");
-                s.push_log(LogEntry::Error(s.gp_list_error.clone()));
-            }
-            Some(daemon::ListError::BoutonLinuxMissing) => {
-                s.gp_list_error =
-                    "bouton-linux is not installed in WSL. Run `cargo install --path crates/bouton-linux` inside WSL."
-                        .into();
-                s.push_log(LogEntry::Error(s.gp_list_error.clone()));
-            }
-            Some(daemon::ListError::Failed { code, stderr }) => {
-                let suffix = code.map(|c| format!(" (exit {c})")).unwrap_or_default();
-                s.gp_list_error = format!("bouton-linux --list failed{suffix}: {stderr}");
-                s.push_log(LogEntry::Error(s.gp_list_error.clone()));
-            }
-        }
-    });
-    app.spawn(async move {
-        let res = daemon::list_devices(false).await;
-        cb.send(res);
-    });
 }

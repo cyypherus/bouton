@@ -22,13 +22,26 @@ fn gamepad_event_from_evdev(event: evdev::InputEvent) -> Option<GamepadEvent> {
 #[derive(Serialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 enum Event<'a> {
-    Device { path: &'a str, name: &'a str },
+    Device {
+        path: &'a str,
+        name: &'a str,
+    },
     Opened,
     PermissionDenied,
-    OpenError { msg: String },
-    SendError { msg: String },
-    Button { control: GamepadControl, pressed: bool },
-    Axis { control: GamepadControl, value: i32 },
+    OpenError {
+        msg: String,
+    },
+    SendError {
+        msg: String,
+    },
+    Button {
+        control: GamepadControl,
+        pressed: bool,
+    },
+    Axis {
+        control: GamepadControl,
+        value: i32,
+    },
 }
 
 fn emit(ev: Event<'_>) {
@@ -112,7 +125,9 @@ fn run(device: String, server: String) {
         let socket = match UdpSocket::bind("0.0.0.0:0").await {
             Ok(s) => s,
             Err(e) => {
-                emit(Event::OpenError { msg: format!("bind: {e}") });
+                emit(Event::OpenError {
+                    msg: format!("bind: {e}"),
+                });
                 return;
             }
         };

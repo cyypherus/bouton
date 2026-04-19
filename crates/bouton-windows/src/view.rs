@@ -1,8 +1,8 @@
 use crate::keycode::KeyCode;
 use crate::mappings::{StickId, TriggerMapping};
 use crate::{
-    BUTTON_CONTROLS, DPadDir, GpStatus, ListenSlot, LogEntry, ServerStatus, State, StickDir,
-    default_stick, refresh_gp_devices, setup, start_daemon, stop_daemon,
+    BUTTON_CONTROLS, DPadDir, ListenSlot, LogEntry, ServerStatus, State, StickDir, default_stick,
+    launch_wsl_client, setup,
 };
 use bouton_core::control::GamepadControl;
 use haven::*;
@@ -82,12 +82,6 @@ fn header<'a>(s: &'a State, app: &mut AppState) -> Layout<'a, View<State>, AppCt
         ServerStatus::Listening => (GREEN, format!("listening on {}", s.status_detail)),
         ServerStatus::Failed => (RED, format!("bind failed: {}", s.status_detail)),
     };
-    let (gp_color, gp_text) = match s.gp_status {
-        GpStatus::Idle => (FG_DIM, "gamepad idle".to_string()),
-        GpStatus::Opening => (YELLOW, format!("gamepad opening {}", s.gp_detail)),
-        GpStatus::Ready => (GREEN, format!("gamepad {}", s.gp_detail)),
-        GpStatus::Failed => (RED, format!("gamepad failed: {}", s.gp_detail)),
-    };
     let (client_color, client_text) = match s.client {
         Some(addr) => (GREEN, format!("client {addr}")),
         None => (FG_DIM, "no client".to_string()),
@@ -104,7 +98,6 @@ fn header<'a>(s: &'a State, app: &mut AppState) -> Layout<'a, View<State>, AppCt
                     .build(app.ctx())
                     .width(90.),
                 dot_label(app, server_color, server_text),
-                dot_label(app, gp_color, gp_text),
                 dot_label(app, client_color, client_text),
                 space(),
             ],
@@ -121,8 +114,15 @@ fn dot_label<'a>(
     row_spaced(
         6.,
         vec![
-            circle(id!(str_hash(&label, 0))).fill(color).finish(app.ctx()).width(10.).height(10.),
-            text(id!(str_hash(&label, 1)), label).fill(FG).font_size(13).build(app.ctx()),
+            circle(id!(str_hash(&label, 0)))
+                .fill(color)
+                .finish(app.ctx())
+                .width(10.)
+                .height(10.),
+            text(id!(str_hash(&label, 1)), label)
+                .fill(FG)
+                .font_size(13)
+                .build(app.ctx()),
         ],
     )
 }
@@ -245,10 +245,6 @@ fn text_field_addr<'a>(s: &'a State, app: &mut AppState) -> Layout<'a, View<Stat
             let _ = s
                 .rebind_tx
                 .send((s.mappings.listen_addr.clone(), s.mappings.listen_port));
-            if s.daemon.is_some() {
-                stop_daemon(s);
-                start_daemon(s, app);
-            }
             s.persist(app);
         }
     })
@@ -291,10 +287,6 @@ fn text_field_port<'a>(s: &'a State, app: &mut AppState) -> Layout<'a, View<Stat
             let _ = s
                 .rebind_tx
                 .send((s.mappings.listen_addr.clone(), s.mappings.listen_port));
-            if s.daemon.is_some() {
-                stop_daemon(s);
-                start_daemon(s, app);
-            }
             s.persist(app);
         }
     })
@@ -702,7 +694,10 @@ fn setup_buttons<'a>(s: &'a State, app: &mut AppState) -> Layout<'a, View<State>
                 s.refresh_btn,
                 app,
                 "Refresh",
-                Binding::new(|s: &State| s.refresh_btn, |s: &mut State, v| s.refresh_btn = v),
+                Binding::new(
+                    |s: &State| s.refresh_btn,
+                    |s: &mut State, v| s.refresh_btn = v,
+                ),
                 |_s, app| {
                     let cb = app.callback(|s: &mut State, devs: Vec<setup::UsbDevice>| {
                         s.devices = devs;
@@ -748,7 +743,10 @@ fn setup_buttons<'a>(s: &'a State, app: &mut AppState) -> Layout<'a, View<State>
                 s.attach_btn,
                 app,
                 "Attach WSL",
-                Binding::new(|s: &State| s.attach_btn, |s: &mut State, v| s.attach_btn = v),
+                Binding::new(
+                    |s: &State| s.attach_btn,
+                    |s: &mut State, v| s.attach_btn = v,
+                ),
                 |s, app| {
                     let bus = s.device_dd.selected.clone();
                     let cb = app.callback(|s: &mut State, r: Result<String, String>| match r {
@@ -770,7 +768,10 @@ fn setup_buttons<'a>(s: &'a State, app: &mut AppState) -> Layout<'a, View<State>
                 s.detach_btn,
                 app,
                 "Detach",
-                Binding::new(|s: &State| s.detach_btn, |s: &mut State, v| s.detach_btn = v),
+                Binding::new(
+                    |s: &State| s.detach_btn,
+                    |s: &mut State, v| s.detach_btn = v,
+                ),
                 |s, app| {
                     let bus = s.device_dd.selected.clone();
                     let cb = app.callback(|s: &mut State, r: Result<String, String>| match r {
@@ -846,216 +847,94 @@ fn log_panel<'a>(s: &'a State, app: &mut AppState) -> Layout<'a, View<State>, Ap
     panel(bg, column_spaced(6., vec![title, view.expand()]))
 }
 
-const AXES: &[GamepadControl] = &[
-    GamepadControl::LeftStickX,
-    GamepadControl::LeftStickY,
-    GamepadControl::RightStickX,
-    GamepadControl::RightStickY,
-    GamepadControl::L2,
-    GamepadControl::R2,
-    GamepadControl::DPadX,
-    GamepadControl::DPadY,
-];
-
 fn gamepad_panel<'a>(s: &'a State, app: &mut AppState) -> Layout<'a, View<State>, AppCtx> {
     let bg = panel_bg(app);
     let title = section_title(app, "Gamepad Client");
-    let gp_dd = gp_device_dropdown(s, app).expand_x();
-    let gp_refresh = action_button(
-        s.gp_refresh_btn,
-        app,
-        "Refresh",
-        Binding::new(
-            |s: &State| s.gp_refresh_btn,
-            |s, v| s.gp_refresh_btn = v,
-        ),
-        |_s, app| refresh_gp_devices(app),
-    )
-    .width(80.);
-    let running = s.daemon.is_some();
-    let start = action_button(
-        s.start_btn,
-        app,
-        if running { "Restart" } else { "Start" },
-        Binding::new(|s: &State| s.start_btn, |s, v| s.start_btn = v),
-        |s, app| {
-            if s.daemon.is_some() {
-                stop_daemon(s);
-            }
-            s.as_root = false;
-            start_daemon(s, app);
-        },
-    )
-    .width(80.);
-    let stop = action_button(
-        s.stop_btn,
-        app,
-        "Stop",
-        Binding::new(|s: &State| s.stop_btn, |s, v| s.stop_btn = v),
-        |s, _app| stop_daemon(s),
-    )
-    .width(60.);
-    let control_row = row_spaced(6., vec![gp_dd, gp_refresh, start, stop]).height(30.);
 
-    let hint: Option<Layout<'a, View<State>, AppCtx>> = if s.gp_list_error.is_empty() {
+    let device_label = text(id!(str_hash("device", 70)), "WSL device")
+        .fill(FG_DIM)
+        .font_size(LABEL_SIZE)
+        .build(app.ctx())
+        .width(LABEL_W + 6.);
+    let device_field = text_field_gp_device(s, app).expand_x();
+    let launch_btn = action_button(
+        s.launch_wsl_btn,
+        app,
+        "Launch WSL Client",
+        Binding::new(|s: &State| s.launch_wsl_btn, |s, v| s.launch_wsl_btn = v),
+        launch_wsl_client,
+    )
+    .width(160.);
+    let control_row = row_spaced(8., vec![device_label, device_field, launch_btn]).height(30.);
+
+    let hint: Option<Layout<'a, View<State>, AppCtx>> = if s.launch_error.is_empty() {
         None
     } else {
         Some(
-            text(id!(), s.gp_list_error.as_str())
+            text(id!(str_hash("launch_error", 71)), s.launch_error.as_str())
                 .fill(YELLOW)
                 .font_size(11)
                 .build(app.ctx()),
         )
     };
 
-    let buttons_grid: Vec<Layout<'a, View<State>, AppCtx>> = BUTTON_CONTROLS
-        .chunks(5)
-        .map(|chunk| {
-            let cells: Vec<_> = chunk.iter().map(|c| button_cell(s, app, *c)).collect();
-            row_spaced(4., cells).height(22.)
-        })
-        .collect();
-
-    let axes_rows: Vec<Layout<'a, View<State>, AppCtx>> =
-        AXES.iter().map(|c| axis_row(s, app, *c)).collect();
+    let last_key_text = match &s.last_key {
+        Some((label, at)) => {
+            let ms = at.elapsed().as_millis();
+            if ms < 60_000 {
+                format!("Last key: {label}  ({ms} ms ago)")
+            } else {
+                format!("Last key: {label}  ({} s ago)", ms / 1000)
+            }
+        }
+        None => "Last key: — (waiting for events)".to_string(),
+    };
+    let last_key = text(id!(str_hash("last_key", 72)), last_key_text)
+        .fill(KEY_COLOR)
+        .font_size(14)
+        .build(app.ctx());
 
     let mut children = vec![title, control_row];
     if let Some(h) = hint {
         children.push(h);
     }
-    children.push(column_spaced(4., buttons_grid));
-    children.push(column_spaced(3., axes_rows).expand());
+    children.push(last_key);
 
     panel(bg, column_spaced(8., children))
 }
 
-fn gp_device_dropdown<'a>(s: &'a State, app: &mut AppState) -> Layout<'a, View<State>, AppCtx> {
-    let devs: Vec<(String, String)> = s.gp_devices.clone();
-    let options: Vec<String> = if devs.is_empty() {
-        vec![String::new()]
-    } else {
-        devs.iter().map(|(p, _)| p.clone()).collect()
-    };
-    dropdown(
+fn text_field_gp_device<'a>(s: &'a State, app: &mut AppState) -> Layout<'a, View<State>, AppCtx> {
+    text_field(
         id!(),
         (
-            s.gp_device_dd.clone(),
+            s.gp_device_field.clone(),
             Binding::new(
-                |s: &State| s.gp_device_dd.clone(),
-                |s: &mut State, v: DropdownState<String>| {
-                    s.mappings.last_device = Some(v.selected.clone()).filter(|p| !p.is_empty());
-                    s.gp_device_dd = v;
+                |s: &State| s.gp_device_field.clone(),
+                |s: &mut State, v: TextState| {
+                    s.mappings.last_device = Some(v.text.clone()).filter(|t| !t.trim().is_empty());
+                    s.gp_device_field = v;
                 },
             ),
         ),
-        options,
-        move |item, ctx| {
-            let label = if item.value.is_empty() {
-                "no gamepad found in WSL".to_string()
-            } else {
-                let name = devs
-                    .iter()
-                    .find(|(p, _)| p == item.value)
-                    .map(|(_, n)| n.as_str())
-                    .unwrap_or("");
-                format!("{}   {}", item.value, name)
-            };
-            text(id!(item.index as u64), label)
-                .fill(if item.selected { ACCENT } else { FG })
-                .font_size(12)
-                .build(ctx)
-                .pad_x(8.)
-                .pad_y(4.)
-        },
     )
-    .background(|ds, ctx| {
+    .font_size(13)
+    .text_fill(FG)
+    .cursor_fill(FG)
+    .highlight_fill(ACCENT.with_alpha(0.4))
+    .enter_end_editing()
+    .esc_end_editing()
+    .background(|_, _, ctx| {
         rect(id!())
-            .fill(if ds.expanded { PANEL_HI } else { PANEL })
-            .stroke(if ds.expanded { ACCENT } else { BORDER }, Stroke::new(1.))
+            .fill(PANEL_HI)
+            .stroke(BORDER, Stroke::new(1.))
             .corner_rounding(5.)
             .build(ctx)
     })
-    .on_select(|s, app, _| s.persist(app))
-    .build(app.ctx())
-}
-
-fn button_cell<'a>(
-    s: &'a State,
-    app: &mut AppState,
-    c: GamepadControl,
-) -> Layout<'a, View<State>, AppCtx> {
-    let pressed = s.live_buttons.get(&c).copied().unwrap_or(false);
-    let (fill, stroke_col) = if pressed {
-        (ACCENT, ACCENT)
-    } else {
-        (PANEL_HI, BORDER)
-    };
-    let bg = rect(id!(control_hash(c)))
-        .fill(fill)
-        .stroke(stroke_col, Stroke::new(1.))
-        .corner_rounding(4.)
-        .build(app.ctx());
-    let label = text(id!(control_hash(c) ^ 0xAA), format!("{c}"))
-        .fill(if pressed { Color::WHITE } else { FG })
-        .font_size(10)
-        .build(app.ctx());
-    stack(vec![bg, label]).expand_x()
-}
-
-fn axis_row<'a>(
-    s: &'a State,
-    app: &mut AppState,
-    c: GamepadControl,
-) -> Layout<'a, View<State>, AppCtx> {
-    let value = s.live_axes.get(&c).copied().unwrap_or(0);
-    let label = text(id!(control_hash(c) ^ 0xA0), format!("{c}"))
-        .fill(FG_DIM)
-        .font_size(10)
-        .build(app.ctx())
-        .width(90.);
-    let val_label = text(id!(control_hash(c) ^ 0xA1), format!("{value:>5}"))
-        .fill(FG)
-        .font_size(10)
-        .build(app.ctx())
-        .width(40.);
-    let bar_bg = rect(id!(control_hash(c) ^ 0xA2))
-        .fill(PANEL_HI)
-        .corner_rounding(3.)
-        .build(app.ctx());
-    let (is_signed, norm) = if matches!(c, GamepadControl::L2 | GamepadControl::R2) {
-        (false, (value as f32 / 255.0).clamp(0.0, 1.0))
-    } else if matches!(c, GamepadControl::DPadX | GamepadControl::DPadY) {
-        let v = value as i8 as f32;
-        (true, v.clamp(-1.0, 1.0))
-    } else {
-        let v = (value as f32 - 127.0) / 127.0;
-        (true, v.clamp(-1.0, 1.0))
-    };
-    let bar = path(id!(control_hash(c) ^ 0xA3), move |area: Area| {
-        let h = area.height.min(10.0) as f64;
-        let y0 = (area.y + (area.height - h as f32) / 2.0) as f64;
-        let (x0, w) = if is_signed {
-            let center = area.x + area.width / 2.0;
-            if norm >= 0.0 {
-                (center as f64, (area.width / 2.0 * norm) as f64)
-            } else {
-                let w = (area.width / 2.0 * -norm) as f64;
-                ((center as f64) - w, w)
-            }
-        } else {
-            (area.x as f64, (area.width * norm) as f64)
-        };
-        let w = w.max(0.0);
-        let mut p = BezPath::new();
-        p.move_to((x0, y0));
-        p.line_to((x0 + w, y0));
-        p.line_to((x0 + w, y0 + h));
-        p.line_to((x0, y0 + h));
-        p.close_path();
-        p
+    .padding(6.)
+    .on_edit(|s, app, i| {
+        if let EditInteraction::End = i {
+            s.persist(app);
+        }
     })
-    .fill(ACCENT)
-    .build(app.ctx());
-    let bar_stack = stack(vec![bar_bg, bar]).height(12.).expand_x();
-    row_spaced(6., vec![label, val_label, bar_stack]).height(14.)
+    .build(app.ctx())
 }
