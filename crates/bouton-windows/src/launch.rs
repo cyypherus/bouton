@@ -1,13 +1,24 @@
 pub fn launch_wsl_client(device: &str, server: &str, sudo: bool) -> Result<(), String> {
+    let (host, port) = match server.rsplit_once(':') {
+        Some((h, p)) => (h, p),
+        None => return Err(format!("invalid server address: {server}")),
+    };
+    let host_q = sh_quote(host);
+    let port_q = sh_quote(port);
     let device_q = sh_quote(device);
-    let server_q = sh_quote(server);
-    let invocation = if sudo {
-        format!("sudo \"$(command -v bouton-linux)\" --run {device_q} {server_q}")
+    let bin = if sudo {
+        "sudo \"$(command -v bouton-linux)\""
     } else {
-        format!("bouton-linux --run {device_q} {server_q}")
+        "bouton-linux"
     };
     let script = format!(
-        "{invocation}; \
+        "host={host_q}; \
+         port={port_q}; \
+         if [ -z \"$host\" ] || [ \"$host\" = '0.0.0.0' ]; then \
+           host=\"$(ip route show default 2>/dev/null | awk '{{print $3; exit}}')\"; \
+           echo \"[auto-detected Windows host: $host]\"; \
+         fi; \
+         {bin} --run {device_q} \"$host:$port\"; \
          echo; \
          echo \"[bouton-linux exited: $?] press Enter to close\"; \
          read"
