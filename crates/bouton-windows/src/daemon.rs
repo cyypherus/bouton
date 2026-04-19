@@ -27,14 +27,32 @@ pub enum DaemonEvent {
 
 type Callback = Arc<dyn Fn(DaemonEvent) + Send + Sync + 'static>;
 
+fn sh_quote(s: &str) -> String {
+    let mut out = String::with_capacity(s.len() + 2);
+    out.push('\'');
+    for ch in s.chars() {
+        if ch == '\'' {
+            out.push_str("'\\''");
+        } else {
+            out.push(ch);
+        }
+    }
+    out.push('\'');
+    out
+}
+
 fn wsl_cmd(as_root: bool, args: &[&str]) -> Command {
+    let mut script = String::from(". \"$HOME/.cargo/env\" 2>/dev/null; exec bouton-linux");
+    for a in args {
+        script.push(' ');
+        script.push_str(&sh_quote(a));
+    }
     let mut cmd = Command::new("wsl");
     if as_root {
         cmd.args(["-u", "root"]);
     }
     cmd.arg("--");
-    cmd.args(["bash", "-lc", "exec \"$@\"", "bash", "bouton-linux"]);
-    cmd.args(args);
+    cmd.args(["bash", "-lc", &script]);
     cmd.stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .stdin(Stdio::null());
