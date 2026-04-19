@@ -442,7 +442,11 @@ pub fn start_daemon(state: &mut State, app: &mut AppState) {
         state.as_root
     )));
     let cb = app.callback(on_daemon_event);
-    let handle = daemon::run(device, server, state.as_root, move |ev| cb.send(ev));
+    let (handle, kill_rx) = daemon::handle();
+    let as_root = state.as_root;
+    app.spawn(async move {
+        daemon::run(device, server, as_root, kill_rx, move |ev| cb.send(ev)).await;
+    });
     state.daemon = Some(handle);
 }
 

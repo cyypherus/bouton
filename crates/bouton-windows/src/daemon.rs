@@ -129,31 +129,36 @@ impl DaemonHandle {
     }
 }
 
-pub fn run(
+pub fn handle() -> (DaemonHandle, oneshot::Receiver<()>) {
+    let (kill_tx, kill_rx) = oneshot::channel();
+    (
+        DaemonHandle {
+            kill: Some(kill_tx),
+        },
+        kill_rx,
+    )
+}
+
+pub async fn run(
     device: String,
     server: String,
     as_root: bool,
+    kill_rx: oneshot::Receiver<()>,
     on_event: impl Fn(DaemonEvent) + Send + Sync + 'static,
-) -> DaemonHandle {
+) {
     let cb: Callback = Arc::new(on_event);
-    let (kill_tx, kill_rx) = oneshot::channel();
-    tokio::spawn(async move {
-        let mut cmd = wsl_cmd(as_root, &["--run", &device, &server]);
-        let mut child: Child = match cmd.spawn() {
-            Ok(c) => c,
-            Err(e) => {
-                cb(DaemonEvent::Msg(DaemonMsg::OpenError {
-                    msg: format!("spawn wsl: {e}"),
-                }));
-                cb(DaemonEvent::Exited(None));
-                return;
-            }
-        };
-        pump(&mut child, cb, kill_rx).await;
-    });
-    DaemonHandle {
-        kill: Some(kill_tx),
-    }
+    let mut cmd = wsl_cmd(as_root, &["--run", &device, &server]);
+    let mut child: Child = match cmd.spawn() {
+        Ok(c) => c,
+        Err(e) => {
+            cb(DaemonEvent::Msg(DaemonMsg::OpenError {
+                msg: format!("spawn wsl: {e}"),
+            }));
+            cb(DaemonEvent::Exited(None));
+            return;
+        }
+    };
+    pump(&mut child, cb, kill_rx).await;
 }
 
 async fn pump(child: &mut Child, cb: Callback, mut kill_rx: oneshot::Receiver<()>) {
