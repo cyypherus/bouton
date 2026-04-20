@@ -1,4 +1,4 @@
-use haven::{Key, NamedKey};
+use haven::{Key, keyboard::NamedKey};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]

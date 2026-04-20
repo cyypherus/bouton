@@ -63,7 +63,7 @@ fn key_listener<'a>(app: &mut AppState) -> Layout<'a, View<State>, AppCtx> {
             if s.listening.is_none() {
                 return;
             }
-            if key == Key::Named(NamedKey::Escape) {
+            if key == Key::Named(keyboard::NamedKey::Escape) {
                 s.listening = None;
                 return;
             }
@@ -632,10 +632,7 @@ fn setup_panel<'a>(s: &'a State, app: &mut AppState) -> Layout<'a, View<State>, 
     .build(app.ctx());
     panel(
         bg,
-        column_spaced(
-            10.,
-            vec![title, dd_row, btn_row.height(30.), help],
-        ),
+        column_spaced(10., vec![title, dd_row, btn_row.height(30.), help]),
     )
 }
 
@@ -883,9 +880,7 @@ fn gamepad_panel<'a>(s: &'a State, app: &mut AppState) -> Layout<'a, View<State>
             .corner_rounding(9.)
             .build(ctx)
     })
-    .knob(|_, _, ctx| {
-        circle(id!()).fill(FG).finish(ctx)
-    })
+    .knob(|_, _, ctx| circle(id!()).fill(FG).finish(ctx))
     .on_toggle(|s, app, on| {
         s.mappings.sudo = on;
         s.persist(app);

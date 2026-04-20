@@ -1011,6 +1011,7 @@ dependencies = [
 [[package]]
 name = "haven"
 version = "0.1.0"
+source = "git+https://github.com/cyypherus/haven?branch=main#0cc64cc1e0dff19ca842743fb268d5a36ec1412b"
 dependencies = [
  "backer",
  "bytemuck",
