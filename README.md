@@ -47,8 +47,8 @@ cargo install --path crates/bouton-linux
 
 ## Run
 
-1. Launch `bouton-windows` on Windows. Use the USB Setup panel to pick your gamepad's bus ID, bind it (elevated), and attach it to WSL. Then click **Launch WSL Client** — or launch `bouton-linux` manually from WSL.
-2. In `bouton-linux`, pick the `/dev/input/event*` device, set the Windows host address, and click **Start**.
-3. Configure mappings in the Windows GUI. Changes apply immediately and persist automatically.
+1. Launch `bouton-windows` on Windows. Use the USB Setup panel to pick your gamepad's bus ID, bind it (elevated), and attach it to WSL.
+2. In the Gamepad Client panel, enter the WSL device path (e.g. `/dev/input/event8`) and click **Launch WSL Client**. A new WSL terminal opens running `bouton-linux`. If you hit a permission-denied error on the device, either toggle **Run with sudo** in the panel, or add your user to the `input` group: `sudo usermod -aG input $USER` then run `wsl --shutdown` from Windows and reopen.
+3. Configure mappings in the Windows GUI. Changes apply immediately and persist automatically. The Gamepad Client panel shows the last key event as feedback.
 
-No config files. No terminals. Mappings and connection state live under your platform's config directory (e.g. `%APPDATA%\cyy\bouton\config` on Windows).
+Mappings and connection state live under your platform's config directory (e.g. `%APPDATA%\cyy\bouton\config` on Windows).

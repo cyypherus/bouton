@@ -3,7 +3,7 @@ members = ["crates/bouton-core", "crates/bouton-linux", "crates/bouton-windows"]
 resolver = "2"
 
 [workspace.dependencies]
-haven = { git = "https://github.com/cyypherus/haven", branch = "main" }
+haven = { path = "/Users/ejohn/Documents/haven" }
 bouton-core = { path = "crates/bouton-core" }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"

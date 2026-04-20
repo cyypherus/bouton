@@ -74,7 +74,6 @@ pub struct State {
     pub status_detail: String,
     pub client: Option<SocketAddr>,
     pub log: VecDeque<LogEntry>,
-    pub log_scroller: std::rc::Rc<std::cell::RefCell<ScrollerState>>,
 
     pub key_buttons: HashMap<ListenSlot, ButtonState>,
     pub listening: Option<ListenSlot>,
@@ -142,7 +141,6 @@ impl State {
             status_detail: String::new(),
             client: None,
             log: VecDeque::new(),
-            log_scroller: std::rc::Rc::new(std::cell::RefCell::new(ScrollerState::default())),
 
             mappings,
             mappings_shared: shared,

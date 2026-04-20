@@ -634,7 +634,7 @@ fn setup_panel<'a>(s: &'a State, app: &mut AppState) -> Layout<'a, View<State>, 
         bg,
         column_spaced(
             10.,
-            vec![title, dd_row.height(30.), btn_row.height(30.), help],
+            vec![title, dd_row, btn_row.height(30.), help],
         ),
     )
 }
@@ -672,7 +672,7 @@ fn device_dropdown<'a>(s: &'a State, app: &mut AppState) -> Layout<'a, View<Stat
                 .font_size(12)
                 .build(ctx)
                 .pad_x(8.)
-                .pad_y(4.)
+                .pad_y(8.)
         },
     )
     .background(|ds, ctx| {
@@ -821,11 +821,9 @@ fn log_panel<'a>(s: &'a State, app: &mut AppState) -> Layout<'a, View<State>, Ap
     let bg = panel_bg(app);
     let title = section_title(app, "Activity");
     let entries: Vec<LogEntry> = s.log.iter().rev().cloned().collect();
-    let scroller_state = s.log_scroller.clone();
     let view = scroller(
         id!(),
         None,
-        scroller_state,
         move |index, _id, ctx| {
             entries.get(index).map(|entry| {
                 let (color, msg) = match entry {

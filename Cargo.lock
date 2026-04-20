@@ -1011,12 +1011,12 @@ dependencies = [
 [[package]]
 name = "haven"
 version = "0.1.0"
-source = "git+https://github.com/cyypherus/haven?branch=main#ebbdf6c47fb96b166afc801edd8a4fab48c5b84c"
 dependencies = [
  "backer",
  "bytemuck",
  "clipboard-rs",
  "image",
+ "lilt",
  "parley",
  "pollster",
  "tokio",
@@ -1242,6 +1242,15 @@ dependencies = [
  "libc",
  "plain",
  "redox_syscall 0.7.4",
+]
+
+[[package]]
+name = "lilt"
+version = "0.8.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f67562e5eff6b20553fa9be1c503356768420994e28f67e3eafe6f41910e57ad"
+dependencies = [
+ "web-time",
 ]
 
 [[package]]
